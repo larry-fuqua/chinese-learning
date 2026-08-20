@@ -105,19 +105,27 @@ export function StoryLibrary() {
                     {story.sentences.length} sentences
                   </p>
                 </Link>
-                {!story.bundled ? (
-                  <button
-                    type="button"
-                    className="font-[family-name:var(--font-sans)] text-xs text-ink-soft hover:text-cinnabar"
-                    onClick={() => {
-                      if (confirm(`Delete “${story.title}”?`)) {
-                        void deleteStory(story.id).then(refresh);
-                      }
-                    }}
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  <Link
+                    href={`/new?id=${encodeURIComponent(story.id)}`}
+                    className="font-[family-name:var(--font-sans)] text-xs text-cinnabar"
                   >
-                    Delete
-                  </button>
-                ) : null}
+                    Edit
+                  </Link>
+                  {!story.bundled ? (
+                    <button
+                      type="button"
+                      className="font-[family-name:var(--font-sans)] text-xs text-ink-soft hover:text-cinnabar"
+                      onClick={() => {
+                        if (confirm(`Delete “${story.title}”?`)) {
+                          void deleteStory(story.id).then(refresh);
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </li>
           ))}

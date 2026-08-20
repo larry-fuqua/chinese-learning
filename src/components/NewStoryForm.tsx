@@ -2,20 +2,37 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
-import { saveStory } from "@/lib/storage";
+import { getStory, saveStory } from "@/lib/storage";
 import { buildSentencesFromHanzi, looksLikePinyin, newId, onlyHanzi } from "@/lib/text";
-import type { PrepareResponse, Story, StoryLevel } from "@/lib/types";
+import type { Note, PrepareResponse, Story, StoryLevel } from "@/lib/types";
 
-export function NewStoryForm() {
+export function NewStoryForm({ storyId }: { storyId?: string }) {
   const router = useRouter();
+  const [existing, setExisting] = useState<Story | null>(null);
   const [title, setTitle] = useState("");
   const [level, setLevel] = useState<StoryLevel>("HSK1");
   const [hanzi, setHanzi] = useState("");
   const [pinyin, setPinyin] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const editing = Boolean(storyId);
+
+  useEffect(() => {
+    if (!storyId) return;
+    void getStory(storyId).then((found) => {
+      if (!found) {
+        setError("Story not found in this browser.");
+        return;
+      }
+      setExisting(found);
+      setTitle(found.title);
+      setLevel(found.level);
+      setHanzi(found.hanzi);
+      setPinyin(found.sentences.map((s) => s.pinyin).filter(Boolean).join("\n"));
+    });
+  }, [storyId]);
 
   async function prepareAndSave() {
     setError("");
@@ -42,13 +59,13 @@ export function NewStoryForm() {
         throw new Error(body.error || `Prepare failed (${response.status})`);
       }
       const prepared = (await response.json()) as PrepareResponse;
-      const story = toStory(prepared);
+      const story = toStory(prepared, existing);
       await saveStory(story);
       router.push(`/read/${story.id}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not prepare story.";
       if (hanziText && onlyHanzi(hanziText) && !looksLikePinyin(hanziText)) {
-        const local = localStory(title, level, hanziText);
+        const local = localStory(title, level, hanziText, existing);
         await saveStory(local);
         router.push(`/read/${local.id}`);
         return;
@@ -66,7 +83,7 @@ export function NewStoryForm() {
       setError("Local save needs simplified Chinese text.");
       return;
     }
-    const story = localStory(title, level, hanziText);
+    const story = localStory(title, level, hanziText, existing);
     await saveStory(story);
     router.push(`/read/${story.id}`);
   }
@@ -92,7 +109,7 @@ export function NewStoryForm() {
   return (
     <div className="mx-auto min-h-screen max-w-3xl">
       <AppHeader
-        title="新课文"
+        title={editing ? "改课文" : "新课文"}
         right={
           <Link
             href="/"
@@ -104,9 +121,9 @@ export function NewStoryForm() {
       />
       <main className="px-4 py-8 sm:px-6">
         <p className="font-[family-name:var(--font-sans)] text-sm leading-relaxed text-ink-soft">
-          Paste a graded reader, a social post, or numbered pinyin. AI fills the
-          missing side and drafts notes for key words. Display stays simplified
-          Chinese.
+          {editing
+            ? "Fix the Chinese (or title) and save. Your notes are kept unless you re-run AI, which only fills gaps."
+            : "Paste a graded reader, a social post, or numbered pinyin. AI fills the missing side and drafts notes for key words. Display stays simplified Chinese."}
         </p>
 
         <form
@@ -189,14 +206,14 @@ export function NewStoryForm() {
               disabled={busy}
               className="rounded-full bg-cinnabar px-5 py-2 font-[family-name:var(--font-sans)] text-sm font-medium text-paper disabled:opacity-60"
             >
-              {busy ? "Preparing…" : "Prepare with AI"}
+              {busy ? "Preparing…" : editing ? "Save with AI" : "Prepare with AI"}
             </button>
             <button
               type="button"
               onClick={() => void saveLocalOnly()}
               className="rounded-full border border-[color-mix(in_oklab,var(--color-ink)_16%,transparent)] px-5 py-2 font-[family-name:var(--font-sans)] text-sm"
             >
-              Save Chinese only
+              {editing ? "Save text only" : "Save Chinese only"}
             </button>
           </div>
         </form>
@@ -205,30 +222,46 @@ export function NewStoryForm() {
   );
 }
 
-function toStory(prepared: PrepareResponse): Story {
+function keepUserNotes(notes: Record<string, Note>): Record<string, Note> {
+  const kept: Record<string, Note> = {};
+  for (const [key, note] of Object.entries(notes)) {
+    if (note.source === "user") kept[key] = note;
+  }
+  return kept;
+}
+
+function toStory(prepared: PrepareResponse, existing: Story | null): Story {
   const now = new Date().toISOString();
+  const userNotes = existing ? keepUserNotes(existing.notes) : {};
   return {
-    id: newId(),
+    id: existing?.id ?? newId(),
     title: prepared.title,
     level: prepared.level,
+    bundled: existing?.bundled,
     hanzi: prepared.hanzi,
     sentences: prepared.sentences,
-    notes: prepared.notes,
-    createdAt: now,
+    notes: { ...prepared.notes, ...userNotes },
+    createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
 }
 
-function localStory(title: string, level: StoryLevel, hanzi: string): Story {
+function localStory(
+  title: string,
+  level: StoryLevel,
+  hanzi: string,
+  existing: Story | null,
+): Story {
   const now = new Date().toISOString();
   return {
-    id: newId(),
-    title: title.trim() || "Untitled",
+    id: existing?.id ?? newId(),
+    title: title.trim() || existing?.title || "Untitled",
     level,
+    bundled: existing?.bundled,
     hanzi,
     sentences: buildSentencesFromHanzi(hanzi),
-    notes: {},
-    createdAt: now,
+    notes: existing?.notes ?? {},
+    createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
 }

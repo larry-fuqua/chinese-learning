@@ -379,6 +379,12 @@ export function Reader({ storyId }: { storyId: string }) {
               {story.level}
             </span>
             <Link
+              href={`/new?id=${encodeURIComponent(story.id)}`}
+              className="rounded-full border border-[color-mix(in_oklab,var(--color-ink)_16%,transparent)] px-3 py-1.5 font-[family-name:var(--font-sans)] text-sm"
+            >
+              Edit
+            </Link>
+            <Link
               href="/"
               className="rounded-full border border-[color-mix(in_oklab,var(--color-ink)_16%,transparent)] px-3 py-1.5 font-[family-name:var(--font-sans)] text-sm"
             >
