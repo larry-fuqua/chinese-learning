@@ -91,10 +91,14 @@ export function NewStoryForm({ storyId }: { storyId?: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hanzi: hanziText }),
       });
-      if (segmented.ok) {
-        const body = (await segmented.json()) as { sentences?: Story["sentences"] };
-        if (body.sentences?.length) story.sentences = body.sentences;
+      const body = (await segmented.json()) as {
+        sentences?: Story["sentences"];
+        error?: string;
+      };
+      if (!segmented.ok || !body.sentences?.length) {
+        throw new Error(body.error || "Could not group words. Try Save with AI.");
       }
+      story.sentences = body.sentences;
       await saveStory(story);
       router.push(`/read/${story.id}`);
     } catch (err) {

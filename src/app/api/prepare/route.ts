@@ -95,7 +95,7 @@ Return ONLY a JSON object with this shape:
 
 Rules:
 - Always output simplified Chinese. Never traditional.
-- Pinyin uses tone marks (nǐ hǎo), not numbers, except particle 了 as le.
+- Pinyin uses tone marks (nǐ hǎo), not numbers.
 - Notes only for KEY words: new vocab, measure words, easy-to-confuse pairs, names, particles that matter. Not every 的/是.
 - If input is pinyin only, produce the most likely everyday simplified Chinese.
 - If both hanzi and pinyin are given, prefer the hanzi; fix pinyin to match it.

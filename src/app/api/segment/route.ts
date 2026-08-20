@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import type { Sentence } from "@/lib/types";
 import { WORD_SEGMENT_RULES } from "@/lib/segmentation";
-import { buildSentencesFromHanzi, glueOrphanPunct, newId } from "@/lib/text";
+import {
+  buildSentencesFromHanzi,
+  glueOrphanPunct,
+  newId,
+  splitSentences,
+} from "@/lib/text";
 import { xaiFetch } from "@/lib/xai";
 
 export const runtime = "nodejs";
@@ -22,7 +27,12 @@ export async function POST(request: Request) {
         temperature: 0.1,
         messages: [
           { role: "system", content: SYSTEM },
-          { role: "user", content: hanzi },
+          {
+            role: "user",
+            content: splitSentences(hanzi)
+              .map((s, i) => `${i + 1}. ${s}`)
+              .join("\n"),
+          },
         ],
       }),
     });
@@ -48,10 +58,10 @@ export async function POST(request: Request) {
   }
 }
 
-const SYSTEM = `You only segment Simplified Chinese for a pronunciation reader.
+const SYSTEM = `You convert each Simplified Chinese sentence into grouped words with pinyin.
 Return ONLY JSON:
-{ "sentences": [ { "hanzi": "full sentence", "pinyin": "tone-marked", "words": [{ "hanzi": "词", "pinyin": "cí" }] } ] }
-Do not rewrite the story. Keep sentence order.
+{ "sentences": [ { "hanzi": "full sentence", "pinyin": "tone-marked pinyin of the words", "words": [{ "hanzi": "词", "pinyin": "cí" }] } ] }
+Keep sentence order. Do not add or drop sentences.
 
 ${WORD_SEGMENT_RULES}`;
 

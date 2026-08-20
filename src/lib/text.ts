@@ -1,5 +1,5 @@
 import type { Sentence, Word } from "./types";
-import { pinyinFor, segmentWords } from "./pinyin";
+import { segmentWords } from "./pinyin";
 
 const HAN = /\p{Script=Han}/u;
 
@@ -162,5 +162,5 @@ export function compareHanzi(
 }
 
 export function fallbackPinyinWord(hanzi: string): Word {
-  return { hanzi, pinyin: pinyinFor(hanzi) };
+  return { hanzi, pinyin: "" };
 }
