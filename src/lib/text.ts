@@ -1,4 +1,4 @@
-import type { Sentence, Word } from "./types";
+import type { Note, Sentence, Word } from "./types";
 import { segmentWords } from "./pinyin";
 
 const HAN = /\p{Script=Han}/u;
@@ -163,4 +163,47 @@ export function compareHanzi(
 
 export function fallbackPinyinWord(hanzi: string): Word {
   return { hanzi, pinyin: "" };
+}
+
+export function normalizeWord(raw: {
+  hanzi?: string;
+  pinyin?: string;
+  note?: string;
+}): Word | null {
+  if (!raw?.hanzi) return null;
+  const { pinyin, note } = parseWordHint(String(raw.pinyin ?? ""), raw.note);
+  const word: Word = { hanzi: String(raw.hanzi), pinyin };
+  if (note) word.note = note;
+  return word;
+}
+
+export function parseWordHint(pinyin: string, note?: string): { pinyin: string; note: string } {
+  const explicit = note?.trim() ?? "";
+  const m = pinyin.match(/^(.*?)\s*\{([^}]*)\}\s*$/);
+  if (m) {
+    return { pinyin: m[1].trim(), note: explicit || m[2].trim() };
+  }
+  return { pinyin: pinyin.trim(), note: explicit };
+}
+
+export function notesFromWordHints(
+  sentences: Sentence[],
+  existing: Record<string, Note> = {},
+): Record<string, Note> {
+  const out: Record<string, Note> = { ...existing };
+  for (const s of sentences) {
+    for (const w of s.words) {
+      const hint = w.note?.trim();
+      if (!hint || !w.hanzi.trim() || isPunctOnly(w.hanzi)) continue;
+      if (out[w.hanzi]?.source === "user") continue;
+      const gloss = hint.split(/[.;：:]/)[0]?.trim() || hint;
+      out[w.hanzi] = {
+        pinyin: w.pinyin,
+        gloss,
+        usage: hint,
+        source: "ai",
+      };
+    }
+  }
+  return out;
 }

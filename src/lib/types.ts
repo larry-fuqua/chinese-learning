@@ -7,6 +7,8 @@ export type NoteSource = "ai" | "user" | "sample";
 export type Word = {
   hanzi: string;
   pinyin: string;
+  /** Optional English usage hint from the LLM. */
+  note?: string;
 };
 
 export type Sentence = {

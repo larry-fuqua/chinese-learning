@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import type { Note, PrepareRequest, PrepareResponse, Sentence } from "@/lib/types";
 import { WORD_SEGMENT_RULES } from "@/lib/segmentation";
-import { buildSentencesFromHanzi, glueOrphanPunct, looksLikePinyin, newId } from "@/lib/text";
+import {
+  buildSentencesFromHanzi,
+  glueOrphanPunct,
+  looksLikePinyin,
+  newId,
+  normalizeWord,
+  notesFromWordHints,
+} from "@/lib/text";
 import { xaiFetch } from "@/lib/xai";
 
 export const runtime = "nodejs";
@@ -81,22 +88,13 @@ Return ONLY a JSON object with this shape:
     {
       "hanzi": "sentence including punctuation",
       "pinyin": "tone-marked pinyin for the sentence",
-      "words": [{ "hanzi": "词", "pinyin": "cí" }]
+      "words": [{ "hanzi": "词", "pinyin": "cí", "note": "optional English usage hint" }]
     }
-  ],
-  "notes": {
-    "词": {
-      "pinyin": "cí",
-      "gloss": "short English gloss",
-      "usage": "1-2 sentences on THIS story's usage, contrasts, measure words, or tone sandhi"
-    }
-  }
+  ]
 }
 
 Rules:
 - Always output simplified Chinese. Never traditional.
-- Pinyin uses tone marks (nǐ hǎo), not numbers.
-- Notes only for KEY words: new vocab, measure words, easy-to-confuse pairs, names, particles that matter. Not every 的/是.
 - If input is pinyin only, produce the most likely everyday simplified Chinese.
 - If both hanzi and pinyin are given, prefer the hanzi; fix pinyin to match it.
 - Keep the learner's meaning. Do not rewrite the story.
@@ -126,23 +124,21 @@ function normalizePrepare(
       hanzi: s.hanzi.trim(),
       pinyin: String(s.pinyin ?? ""),
       words: Array.isArray(s.words)
-        ? s.words
-            .filter((w) => w && w.hanzi)
-            .map((w) => ({ hanzi: String(w.hanzi), pinyin: String(w.pinyin ?? "") }))
+        ? s.words.map((w) => normalizeWord(w)).filter((w): w is NonNullable<typeof w> => w != null)
         : [],
     }));
   sentences = glueOrphanPunct(sentences);
   if (!sentences.length && hanzi) {
     sentences = buildSentencesFromHanzi(hanzi);
   }
-  const notes: Record<string, Note> = {};
+  const notes = notesFromWordHints(sentences);
   if (parsed.notes && typeof parsed.notes === "object") {
     for (const [key, note] of Object.entries(parsed.notes)) {
       if (!key || !note) continue;
       notes[key] = {
-        pinyin: String(note.pinyin ?? ""),
-        gloss: String(note.gloss ?? ""),
-        usage: String(note.usage ?? ""),
+        pinyin: String(note.pinyin ?? notes[key]?.pinyin ?? ""),
+        gloss: String(note.gloss ?? notes[key]?.gloss ?? ""),
+        usage: String(note.usage ?? notes[key]?.usage ?? ""),
         source: "ai",
       };
     }

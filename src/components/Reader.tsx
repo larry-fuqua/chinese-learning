@@ -19,7 +19,7 @@ import {
   saveStory,
   upsertNote,
 } from "@/lib/storage";
-import { compareHanzi, glueOrphanPunct, isHan } from "@/lib/text";
+import { compareHanzi, glueOrphanPunct, isHan, notesFromWordHints } from "@/lib/text";
 import type {
   Note,
   PinyinMode,
@@ -281,7 +281,11 @@ export function Reader({ storyId }: { storyId: string }) {
       };
       if (!response.ok) throw new Error(body.error || "Could not regroup words.");
       if (!body.sentences?.length) throw new Error("No sentences returned.");
-      const next: Story = { ...story, sentences: body.sentences };
+      const next: Story = {
+        ...story,
+        sentences: body.sentences,
+        notes: notesFromWordHints(body.sentences, story.notes),
+      };
       await saveStory(next);
       setStory(next);
       setSelectedWord(null);
@@ -506,10 +510,21 @@ export function Reader({ storyId }: { storyId: string }) {
                     selectedWord={index === active ? selectedWord : null}
                     spokenChar={index === active ? spokenChar : null}
                     matchByExpected={index === active ? matchByExpected : undefined}
+                    notes={story.notes}
                     onWord={(word) => {
                       setActive(index);
                       setSelectedWord(word.hanzi);
-                      setDraft(story.notes[word.hanzi] ?? emptyNote(word));
+                      setDraft(
+                        story.notes[word.hanzi] ??
+                          (word.note
+                            ? {
+                                pinyin: word.pinyin,
+                                gloss: word.note.split(/[.;：:]/)[0]?.trim() || word.note,
+                                usage: word.note,
+                                source: "ai",
+                              }
+                            : emptyNote(word)),
+                      );
                       setEditing(false);
                     }}
                   />
@@ -659,6 +674,7 @@ function SentenceLine({
   selectedWord,
   spokenChar,
   matchByExpected,
+  notes,
   onWord,
 }: {
   sentence: Sentence;
@@ -667,6 +683,7 @@ function SentenceLine({
   selectedWord: string | null;
   spokenChar: number | null;
   matchByExpected?: Map<number, "ok" | "miss" | "sub">;
+  notes: Story["notes"];
   onWord: (word: Word) => void;
 }) {
   let hanOffset = 0;
@@ -681,6 +698,7 @@ function SentenceLine({
         const start = hanOffset;
         const hanCount = chars.filter(isHan).length;
         hanOffset += hanCount;
+        const hint = word.note || notes[word.hanzi]?.usage || notes[word.hanzi]?.gloss;
         return (
           <span
             key={`${sentence.id}-${wi}`}
@@ -688,13 +706,20 @@ function SentenceLine({
             tabIndex={-1}
             className={`ruby-word word-btn ${
               selectedWord === word.hanzi && active ? "active" : ""
-            }`}
+            } ${hint ? "has-note" : ""}`}
             onClick={(e) => {
               e.stopPropagation();
               onWord(word);
             }}
           >
-            {showRuby && word.pinyin ? <rt>{word.pinyin}</rt> : <rt>&nbsp;</rt>}
+            {showRuby && word.pinyin ? (
+              <rt>
+                {word.pinyin}
+                {hint ? ` {${hint}}` : ""}
+              </rt>
+            ) : (
+              <rt>&nbsp;</rt>
+            )}
             <span>
               {chars.map((ch, ci) => {
                 const hanBefore =

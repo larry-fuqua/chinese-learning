@@ -5,7 +5,7 @@ import {
   buildSentencesFromHanzi,
   glueOrphanPunct,
   newId,
-  splitSentences,
+  normalizeWord,
 } from "@/lib/text";
 import { xaiFetch } from "@/lib/xai";
 
@@ -27,12 +27,7 @@ export async function POST(request: Request) {
         temperature: 0.1,
         messages: [
           { role: "system", content: SYSTEM },
-          {
-            role: "user",
-            content: splitSentences(hanzi)
-              .map((s, i) => `${i + 1}. ${s}`)
-              .join("\n"),
-          },
+          { role: "user", content: hanzi },
         ],
       }),
     });
@@ -58,10 +53,10 @@ export async function POST(request: Request) {
   }
 }
 
-const SYSTEM = `You convert each Simplified Chinese sentence into grouped words with pinyin.
-Return ONLY JSON:
-{ "sentences": [ { "hanzi": "full sentence", "pinyin": "tone-marked pinyin of the words", "words": [{ "hanzi": "词", "pinyin": "cí" }] } ] }
-Keep sentence order. Do not add or drop sentences.
+const SYSTEM = `You convert a Simplified Chinese story into grouped words with pinyin.
+Read the full text. Return ONLY JSON:
+{ "sentences": [ { "hanzi": "full sentence", "pinyin": "tone-marked pinyin of the words", "words": [{ "hanzi": "词", "pinyin": "cí", "note": "optional English usage hint" }] } ] }
+Keep sentence order. Do not add or drop or rewrite sentences.
 
 ${WORD_SEGMENT_RULES}`;
 
@@ -82,9 +77,7 @@ function parseSentences(content: string, fallbackHanzi: string): Sentence[] {
       hanzi: s.hanzi.trim(),
       pinyin: String(s.pinyin ?? ""),
       words: Array.isArray(s.words)
-        ? s.words
-            .filter((w) => w && w.hanzi)
-            .map((w) => ({ hanzi: String(w.hanzi), pinyin: String(w.pinyin ?? "") }))
+        ? s.words.map((w) => normalizeWord(w)).filter((w): w is NonNullable<typeof w> => w != null)
         : [],
     }));
   return glueOrphanPunct(sentences.length ? sentences : buildSentencesFromHanzi(fallbackHanzi));

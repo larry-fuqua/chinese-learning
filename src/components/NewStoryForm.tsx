@@ -5,7 +5,13 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { getStory, saveStory } from "@/lib/storage";
-import { buildSentencesFromHanzi, looksLikePinyin, newId, onlyHanzi } from "@/lib/text";
+import {
+  buildSentencesFromHanzi,
+  looksLikePinyin,
+  newId,
+  notesFromWordHints,
+  onlyHanzi,
+} from "@/lib/text";
 import type { Note, PrepareResponse, Story, StoryLevel } from "@/lib/types";
 
 export function NewStoryForm({ storyId }: { storyId?: string }) {
@@ -99,6 +105,7 @@ export function NewStoryForm({ storyId }: { storyId?: string }) {
         throw new Error(body.error || "Could not group words. Try Save with AI.");
       }
       story.sentences = body.sentences;
+      story.notes = notesFromWordHints(body.sentences, existing?.notes ?? {});
       await saveStory(story);
       router.push(`/read/${story.id}`);
     } catch (err) {

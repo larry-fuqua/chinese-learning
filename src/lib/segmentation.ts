@@ -1,11 +1,9 @@
-/** Sentence-level grouping + pinyin. The model sees the sentence; no dictionary, no example zoo. */
-export const WORD_SEGMENT_RULES = `For EACH sentence, group characters into words as they are used in that sentence, and give tone-marked pinyin for those words.
+/** Full-story grouping + pinyin + optional usage hints. No particle special-cases. */
+export const WORD_SEGMENT_RULES = `Read the WHOLE text. Group characters into words as they are used in this story, and give tone-marked pinyin for those words.
 
-Use the sentence's meaning. Do not rewrite the Chinese. Do not look up a longest dictionary match.
+Use the story's meaning. Do not rewrite the Chinese. Do not longest-match a dictionary.
 
-Pinyin must match this sentence:
-- 的 / 地 / 得 as grammar particles (的 in 我的, 地 in 高兴地说, 得 in 跑得快) are light de — never dì or dé.
-- 地 meaning earth/ground is dì. 得 meaning get/obtain is dé.
-- Neutral 了 is le.
+When a word group would help a learner, add a short English usage hint. Prefer a "note" field on that word. You may also put the hint in braces after the pinyin, e.g. gāoxìng de {happily; 地 marks the adverb}.
+Only add a hint when it earns its keep: grammar particles, a reading that isn't the obvious one, a set phrase, a name, a contrast. Skip 的/是/了 unless the usage is easy to miss.
 
-Punctuation including quotes stays in the sentence (never a quote-only sentence). Punctuation tokens have empty pinyin.`;
+Punctuation including quotes stays in its sentence (never a quote-only sentence). Punctuation tokens have empty pinyin.`;
