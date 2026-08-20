@@ -17,13 +17,27 @@ export function looksLikePinyin(text: string): boolean {
   return latin > 8 && latin > han * 2;
 }
 
+const PUNCT_ONLY = /^[\s"'“”‘’「」『』（）()[\]【】《》〈〉…—–,.，、；;:：!?！？。]*$/;
+
+export function isPunctOnly(text: string): boolean {
+  return PUNCT_ONLY.test(text.trim());
+}
+
 export function splitSentences(text: string): string[] {
   const normalized = text.replace(/\r\n/g, "\n").trim();
   if (!normalized) return [];
   const parts = normalized.split(/(?<=[。！？!?…\n])/u);
-  return parts
-    .map((s) => s.replace(/\n/g, "").trim())
-    .filter(Boolean);
+  const merged: string[] = [];
+  for (const raw of parts) {
+    const s = raw.replace(/\n/g, "").trim();
+    if (!s) continue;
+    if (merged.length && isPunctOnly(s)) {
+      merged[merged.length - 1] += s;
+      continue;
+    }
+    merged.push(s);
+  }
+  return merged;
 }
 
 export function newId(): string {
@@ -44,7 +58,21 @@ export function buildSentence(hanzi: string): Sentence {
 }
 
 export function buildSentencesFromHanzi(hanzi: string): Sentence[] {
-  return splitSentences(hanzi).map(buildSentence);
+  return glueOrphanPunct(splitSentences(hanzi).map(buildSentence));
+}
+
+export function glueOrphanPunct(sentences: Sentence[]): Sentence[] {
+  const out: Sentence[] = [];
+  for (const s of sentences) {
+    if (out.length && isPunctOnly(s.hanzi)) {
+      const prev = out[out.length - 1];
+      prev.hanzi += s.hanzi;
+      prev.words = [...prev.words, ...s.words.filter((w) => w.hanzi.trim())];
+      continue;
+    }
+    out.push({ ...s, words: [...s.words] });
+  }
+  return out;
 }
 
 export function toneFromPinyin(pinyin: string): number {

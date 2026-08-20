@@ -19,7 +19,7 @@ import {
   saveStory,
   upsertNote,
 } from "@/lib/storage";
-import { compareHanzi, isHan } from "@/lib/text";
+import { compareHanzi, glueOrphanPunct, isHan } from "@/lib/text";
 import type {
   Note,
   PinyinMode,
@@ -60,7 +60,7 @@ export function Reader({ storyId }: { storyId: string }) {
   useEffect(() => {
     void getStory(storyId).then((found) => {
       if (!found) setMissing(true);
-      else setStory(found);
+      else setStory({ ...found, sentences: glueOrphanPunct(found.sentences) });
     });
   }, [storyId]);
 
@@ -263,6 +263,33 @@ export function Reader({ storyId }: { storyId: string }) {
     });
     if (updated) setStory(updated);
     setEditing(false);
+  }
+
+  async function regroupWords() {
+    if (!story) return;
+    setBusy("Grouping words…");
+    setError("");
+    try {
+      const response = await fetch("/api/segment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hanzi: story.hanzi }),
+      });
+      const body = (await response.json()) as {
+        sentences?: Story["sentences"];
+        error?: string;
+      };
+      if (!response.ok) throw new Error(body.error || "Could not regroup words.");
+      if (!body.sentences?.length) throw new Error("No sentences returned.");
+      const next: Story = { ...story, sentences: body.sentences };
+      await saveStory(next);
+      setStory(next);
+      setSelectedWord(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not regroup words.");
+    } finally {
+      setBusy("");
+    }
   }
 
   async function prepareNotes() {
@@ -502,13 +529,22 @@ export function Reader({ storyId }: { storyId: string }) {
             <p className="font-[family-name:var(--font-sans)] text-[11px] uppercase tracking-[0.2em] text-ink-soft">
               Notes
             </p>
-            <button
-              type="button"
-              onClick={() => void prepareNotes()}
-              className="font-[family-name:var(--font-sans)] text-xs text-cinnabar"
-            >
-              AI fill gaps
-            </button>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => void regroupWords()}
+                className="font-[family-name:var(--font-sans)] text-xs text-cinnabar"
+              >
+                Regroup words
+              </button>
+              <button
+                type="button"
+                onClick={() => void prepareNotes()}
+                className="font-[family-name:var(--font-sans)] text-xs text-cinnabar"
+              >
+                AI fill gaps
+              </button>
+            </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 lg:px-5">
             {!selectedWord ? (

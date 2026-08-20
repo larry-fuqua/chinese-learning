@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { Note, PrepareRequest, PrepareResponse, Sentence } from "@/lib/types";
-import { buildSentencesFromHanzi, looksLikePinyin, newId } from "@/lib/text";
+import { WORD_SEGMENT_RULES } from "@/lib/segmentation";
+import { buildSentencesFromHanzi, glueOrphanPunct, looksLikePinyin, newId } from "@/lib/text";
 import { xaiFetch } from "@/lib/xai";
 
 export const runtime = "nodejs";
@@ -94,12 +95,13 @@ Return ONLY a JSON object with this shape:
 
 Rules:
 - Always output simplified Chinese. Never traditional.
-- Segment words the way a learner should click them (今天, 天气, not 天+气 when it is the word 天气). Keep punctuation as its own token with empty pinyin.
 - Pinyin uses tone marks (nǐ hǎo), not numbers, except particle 了 as le.
 - Notes only for KEY words: new vocab, measure words, easy-to-confuse pairs, names, particles that matter. Not every 的/是.
 - If input is pinyin only, produce the most likely everyday simplified Chinese.
 - If both hanzi and pinyin are given, prefer the hanzi; fix pinyin to match it.
-- Keep the learner's meaning. Do not rewrite the story.`;
+- Keep the learner's meaning. Do not rewrite the story.
+
+${WORD_SEGMENT_RULES}`;
 
 function parseModelJson(content: string): Partial<PrepareResponse> {
   const trimmed = content.trim();
@@ -129,6 +131,7 @@ function normalizePrepare(
             .map((w) => ({ hanzi: String(w.hanzi), pinyin: String(w.pinyin ?? "") }))
         : [],
     }));
+  sentences = glueOrphanPunct(sentences);
   if (!sentences.length && hanzi) {
     sentences = buildSentencesFromHanzi(hanzi);
   }

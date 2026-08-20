@@ -83,9 +83,25 @@ export function NewStoryForm({ storyId }: { storyId?: string }) {
       setError("Local save needs simplified Chinese text.");
       return;
     }
-    const story = localStory(title, level, hanziText, existing);
-    await saveStory(story);
-    router.push(`/read/${story.id}`);
+    setBusy(true);
+    try {
+      const story = localStory(title, level, hanziText, existing);
+      const segmented = await fetch("/api/segment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hanzi: hanziText }),
+      });
+      if (segmented.ok) {
+        const body = (await segmented.json()) as { sentences?: Story["sentences"] };
+        if (body.sentences?.length) story.sentences = body.sentences;
+      }
+      await saveStory(story);
+      router.push(`/read/${story.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function onDropFile(file: File) {
