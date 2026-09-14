@@ -1,5 +1,5 @@
 # Start the Next.js reader detached from any Grok session.
-# Port 3010: 3000 is Proton Mail MCP on this machine.
+# Default port 3010 (change here and in package.json if that port is taken).
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $log = Join-Path $root 'dev-server.log'
