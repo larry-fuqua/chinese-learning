@@ -1,1 +1,1 @@
-@/workspace/chinese-learning-kit/src/components/Reader.tsx
+file:///workspace/chinese-learning-kit/src/components/Reader.tsx
