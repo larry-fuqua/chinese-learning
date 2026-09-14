@@ -9,10 +9,9 @@ import {
   buildSentencesFromHanzi,
   looksLikePinyin,
   newId,
-  notesFromWordHints,
   onlyHanzi,
 } from "@/lib/text";
-import type { Note, PrepareResponse, Story, StoryLevel } from "@/lib/types";
+import type { PrepareResponse, Story, StoryLevel } from "@/lib/types";
 
 export function NewStoryForm({ storyId }: { storyId?: string }) {
   const router = useRouter();
@@ -105,7 +104,7 @@ export function NewStoryForm({ storyId }: { storyId?: string }) {
         throw new Error(body.error || "Could not group words. Try Save with AI.");
       }
       story.sentences = body.sentences;
-      story.notes = notesFromWordHints(body.sentences, existing?.notes ?? {});
+      story.notes = existing?.notes ?? {};
       await saveStory(story);
       router.push(`/read/${story.id}`);
     } catch (err) {
@@ -149,8 +148,8 @@ export function NewStoryForm({ storyId }: { storyId?: string }) {
       <main className="px-4 py-8 sm:px-6">
         <p className="font-[family-name:var(--font-sans)] text-sm leading-relaxed text-ink-soft">
           {editing
-            ? "Fix the Chinese (or title) and save. Your notes are kept unless you re-run AI, which only fills gaps."
-            : "Paste a graded reader, a social post, or numbered pinyin. AI fills the missing side and drafts notes for key words. Display stays simplified Chinese."}
+            ? "Fix the Chinese (or title) and save. Word groups and pinyin are rebuilt; your notes stay as you left them."
+            : "Paste a graded reader, a social post, or numbered pinyin. AI fills missing hanzi or pinyin and groups words. Notes are manual. Display stays simplified Chinese."}
         </p>
 
         <form
@@ -249,17 +248,8 @@ export function NewStoryForm({ storyId }: { storyId?: string }) {
   );
 }
 
-function keepUserNotes(notes: Record<string, Note>): Record<string, Note> {
-  const kept: Record<string, Note> = {};
-  for (const [key, note] of Object.entries(notes)) {
-    if (note.source === "user") kept[key] = note;
-  }
-  return kept;
-}
-
 function toStory(prepared: PrepareResponse, existing: Story | null): Story {
   const now = new Date().toISOString();
-  const userNotes = existing ? keepUserNotes(existing.notes) : {};
   return {
     id: existing?.id ?? newId(),
     title: prepared.title,
@@ -267,7 +257,7 @@ function toStory(prepared: PrepareResponse, existing: Story | null): Story {
     bundled: existing?.bundled,
     hanzi: prepared.hanzi,
     sentences: prepared.sentences,
-    notes: { ...prepared.notes, ...userNotes },
+    notes: existing?.notes ?? {},
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
