@@ -23,7 +23,7 @@ export async function POST(request: Request) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "grok-4.5",
+        model: "grok-4.6",
         temperature: 0.1,
         messages: [
           { role: "system", content: SYSTEM },
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
 
 const SYSTEM = `You convert a Simplified Chinese story into grouped words with pinyin.
 Read the full text. Return ONLY JSON:
-{ "sentences": [ { "hanzi": "full sentence", "pinyin": "tone-marked pinyin of the words", "words": [{ "hanzi": "词", "pinyin": "cí", "note": "optional English usage hint" }] } ] }
+{ "sentences": [ { "hanzi": "full sentence", "pinyin": "tone-marked pinyin of the words", "words": [{ "hanzi": "词", "pinyin": "cí" }] } ] }
 Keep sentence order. Do not add or drop or rewrite sentences.
 
 ${WORD_SEGMENT_RULES}`;

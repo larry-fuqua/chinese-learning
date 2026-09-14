@@ -7,7 +7,6 @@ import {
   looksLikePinyin,
   newId,
   normalizeWord,
-  notesFromWordHints,
 } from "@/lib/text";
 import { xaiFetch } from "@/lib/xai";
 
@@ -36,7 +35,7 @@ export async function POST(request: Request) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "grok-4.5",
+        model: "grok-4.6",
         temperature: 0.3,
         messages: [
           {
@@ -88,7 +87,7 @@ Return ONLY a JSON object with this shape:
     {
       "hanzi": "sentence including punctuation",
       "pinyin": "tone-marked pinyin for the sentence",
-      "words": [{ "hanzi": "词", "pinyin": "cí", "note": "optional English usage hint" }]
+      "words": [{ "hanzi": "词", "pinyin": "cí" }]
     }
   ]
 }
@@ -131,18 +130,7 @@ function normalizePrepare(
   if (!sentences.length && hanzi) {
     sentences = buildSentencesFromHanzi(hanzi);
   }
-  const notes = notesFromWordHints(sentences);
-  if (parsed.notes && typeof parsed.notes === "object") {
-    for (const [key, note] of Object.entries(parsed.notes)) {
-      if (!key || !note) continue;
-      notes[key] = {
-        pinyin: String(note.pinyin ?? notes[key]?.pinyin ?? ""),
-        gloss: String(note.gloss ?? notes[key]?.gloss ?? ""),
-        usage: String(note.usage ?? notes[key]?.usage ?? ""),
-        source: "ai",
-      };
-    }
-  }
+  const notes: Record<string, Note> = {};
   return {
     title: (parsed.title || body.title || "Untitled").trim(),
     level: parsed.level || body.level || "HSK1",
