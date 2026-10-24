@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
+import { clearLegacyDatabase, legacyWorthUploading, readLegacyStories } from "@/lib/legacy-idb";
 import {
   deleteStory,
   exportStories,
@@ -14,13 +15,23 @@ import type { Story } from "@/lib/types";
 export function StoryLibrary() {
   const [stories, setStories] = useState<Story[] | null>(null);
   const [message, setMessage] = useState("");
+  const [legacy, setLegacy] = useState<Story[] | null>(null);
 
   async function refresh() {
-    setStories(await listStories());
+    try {
+      setStories(await listStories());
+    } catch (err) {
+      setStories([]);
+      setMessage(err instanceof Error ? err.message : "Could not load stories.");
+    }
   }
 
   useEffect(() => {
     void refresh();
+    if (sessionStorage.getItem("legacy-library-dismissed") === "1") return;
+    void readLegacyStories().then((found) => {
+      if (legacyWorthUploading(found)) setLegacy(found);
+    });
   }, []);
 
   async function onExport() {
@@ -35,10 +46,27 @@ export function StoryLibrary() {
   }
 
   async function onImport(file: File) {
-    const text = await file.text();
-    const n = await importStories(text);
-    setMessage(`Imported ${n} stor${n === 1 ? "y" : "ies"}.`);
-    await refresh();
+    try {
+      const text = await file.text();
+      const n = await importStories(text);
+      setMessage(`Imported ${n} stor${n === 1 ? "y" : "ies"}.`);
+      await refresh();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Import failed.");
+    }
+  }
+
+  async function uploadLegacy() {
+    if (!legacy?.length) return;
+    try {
+      const n = await importStories(JSON.stringify({ version: 1, stories: legacy }));
+      await clearLegacyDatabase();
+      setLegacy(null);
+      setMessage(`Uploaded ${n} browser stor${n === 1 ? "y" : "ies"} to the server.`);
+      await refresh();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Could not upload browser stories.");
+    }
   }
 
   return (
@@ -83,6 +111,31 @@ export function StoryLibrary() {
           pitch — especially the tones. Pinyin and notes stay hidden until you
           ask.
         </p>
+        {legacy ? (
+          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-[color-mix(in_oklab,var(--color-cinnabar)_30%,transparent)] bg-white/40 px-4 py-3">
+            <p className="font-[family-name:var(--font-sans)] text-sm text-ink">
+              This browser still has {legacy.length} local stor{legacy.length === 1 ? "y" : "ies"}.
+              Upload them once so every device shares the server library.
+            </p>
+            <button
+              type="button"
+              onClick={() => void uploadLegacy()}
+              className="rounded-full bg-cinnabar px-3 py-1.5 font-[family-name:var(--font-sans)] text-sm text-paper"
+            >
+              Upload local stories
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                sessionStorage.setItem("legacy-library-dismissed", "1");
+                setLegacy(null);
+              }}
+              className="font-[family-name:var(--font-sans)] text-sm text-ink-soft"
+            >
+              Not now
+            </button>
+          </div>
+        ) : null}
         {message ? (
           <p className="mt-3 font-[family-name:var(--font-sans)] text-sm text-moss">
             {message}

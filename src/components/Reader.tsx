@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { apiFetch } from "@/lib/api-fetch";
 import { playBuffer, startRecorder, type Recorder } from "@/lib/audio";
 import {
   alignUserSyllableTimes,
@@ -9,13 +10,7 @@ import {
   referenceSyllables,
   syllableTimesFromChars,
 } from "@/lib/pitch";
-import {
-  getStory,
-  getTts,
-  putTts,
-  saveStory,
-  upsertNote,
-} from "@/lib/storage";
+import { getStory, saveStory, upsertNote } from "@/lib/storage";
 import { compareHanzi, glueOrphanPunct, isHan } from "@/lib/text";
 import type {
   Note,
@@ -63,10 +58,12 @@ export function Reader({ storyId }: { storyId: string }) {
   const recorderRef = useRef<Recorder | null>(null);
   const pitchCache = useRef<Map<string, PitchPoint[]>>(new Map());
   useEffect(() => {
-    void getStory(storyId).then((found) => {
-      if (!found) setMissing(true);
-      else setStory({ ...found, sentences: glueOrphanPunct(found.sentences) });
-    });
+    void getStory(storyId)
+      .then((found) => {
+        if (!found) setMissing(true);
+        else setStory({ ...found, sentences: glueOrphanPunct(found.sentences) });
+      })
+      .catch(() => setMissing(true));
   }, [storyId]);
   const sentence = story?.sentences[active];
   const note = selectedWord && story ? story.notes[selectedWord] : undefined;
@@ -84,9 +81,7 @@ export function Reader({ storyId }: { storyId: string }) {
   }, []);
   const ensureTts = useCallback(
     async (s: Sentence): Promise<TtsCache> => {
-      const cached = await getTts(storyId, s.id, speed);
-      if (cached) return cached;
-      const response = await fetch("/api/tts", {
+      const response = await apiFetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: s.hanzi, speed }),
@@ -110,10 +105,9 @@ export function Reader({ storyId }: { storyId: string }) {
         charTimes: body.charTimes ?? [],
         speed: body.speed ?? speed,
       };
-      await putTts(storyId, s.id, cache);
       return cache;
     },
-    [speed, storyId],
+    [speed],
   );
   const playSentence = useCallback(
     async (index = active) => {
@@ -187,7 +181,7 @@ export function Reader({ storyId }: { storyId: string }) {
           "hints",
           sentence.words.map((w) => w.hanzi).filter((h) => /[\u3400-\u9fff]/.test(h)).join(" "),
         );
-        const response = await fetch("/api/stt", { method: "POST", body: form });
+        const response = await apiFetch("/api/stt", { method: "POST", body: form });
         const body = (await response.json()) as {
           error?: string;
           text?: string;
@@ -264,7 +258,7 @@ export function Reader({ storyId }: { storyId: string }) {
     setBusy("Grouping words…");
     setError("");
     try {
-      const response = await fetch("/api/segment", {
+      const response = await apiFetch("/api/segment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hanzi: story.hanzi }),
@@ -294,7 +288,7 @@ export function Reader({ storyId }: { storyId: string }) {
     setBusy("Writing notes…");
     setError("");
     try {
-      const response = await fetch("/api/prepare", {
+      const response = await apiFetch("/api/prepare", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

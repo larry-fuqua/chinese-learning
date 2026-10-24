@@ -1,0 +1,36 @@
+# Chinese reader behind a reverse proxy that keeps the /chinese prefix.
+# Copy .env.example to .env and fill in the secrets before starting.
+services:
+  chinese-reader:
+    build:
+      context: .
+      args:
+        BASE_PATH: ${BASE_PATH:-/chinese}
+    image: chinese-reader
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: ${PORT:-3010}
+      HOSTNAME: 0.0.0.0
+      DATA_DIR: /data
+      BASE_PATH: ${BASE_PATH:-/chinese}
+    ports:
+      - "${HOST_PORT:-3010}:${PORT:-3010}"
+    volumes:
+      - reader-data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const p=process.env.PORT||'3010'; const b=process.env.BASE_PATH||''; fetch('http://127.0.0.1:'+p+b+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+
+volumes:
+  reader-data:

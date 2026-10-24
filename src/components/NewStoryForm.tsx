@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
+import { apiFetch } from "@/lib/api-fetch";
 import { getStory, saveStory } from "@/lib/storage";
 import {
   buildSentencesFromHanzi,
@@ -28,7 +29,7 @@ export function NewStoryForm({ storyId }: { storyId?: string }) {
     if (!storyId) return;
     void getStory(storyId).then((found) => {
       if (!found) {
-        setError("Story not found in this browser.");
+        setError("Story not found.");
         return;
       }
       setExisting(found);
@@ -36,6 +37,8 @@ export function NewStoryForm({ storyId }: { storyId?: string }) {
       setLevel(found.level);
       setHanzi(found.hanzi);
       setPinyin(found.sentences.map((s) => s.pinyin).filter(Boolean).join("\n"));
+    }).catch((err) => {
+      setError(err instanceof Error ? err.message : "Could not load story.");
     });
   }, [storyId]);
 
@@ -49,7 +52,7 @@ export function NewStoryForm({ storyId }: { storyId?: string }) {
     }
     setBusy(true);
     try {
-      const response = await fetch("/api/prepare", {
+      const response = await apiFetch("/api/prepare", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -91,7 +94,7 @@ export function NewStoryForm({ storyId }: { storyId?: string }) {
     setBusy(true);
     try {
       const story = localStory(title, level, hanziText, existing);
-      const segmented = await fetch("/api/segment", {
+      const segmented = await apiFetch("/api/segment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hanzi: hanziText }),
