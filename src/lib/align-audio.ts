@@ -1,19 +1,21 @@
+import { tonelessReading } from "./pinyin-readings";
 import { isHan } from "./text";
 
 export type CharSpan = { hanzi: string; start: number; end: number };
 
-export type AlignmentReport = {
-  checked: number;
-  onTime: number;
-  medianOffset: number;
-  clustered: boolean;
-  /** Seconds to add to every character time. Zero when the slices already line up. */
-  offsetSec: number;
+/**
+ * Fixed slice constants. Tuned once; nothing here is chosen per sentence.
+ * Start is the aligner token start minus LEAD, with PAD_EDGE only beside a pause.
+ * A join ends at the RMS minimum before the next token. A pause ends after
+ * quiet has held for MIN_SIL, plus TAIL, plus PAD_EDGE.
+ */
+export const SLICE = {
+  LEAD_SEC: 0.03,
+  PAD_EDGE_SEC: 0.04,
+  OFF_K: 0.15,
+  MIN_SIL_SEC: 0.03,
+  TAIL_SEC: 0.02,
 };
-
-const ONSET_EARLY_SEC = 0.04;
-const SHIFT_MIN_SEC = 0.05;
-const CLUSTER_SEC = 0.03;
 
 export function normalizeTimestampUnit(
   charTimes: [number, number][],
@@ -97,60 +99,7 @@ export function frameRms(
   return frames;
 }
 
-/** First broadband-energy onset near the labeled start. Null when the window is silent. */
-export function energyOnset(
-  frames: { t: number; rms: number }[],
-  start: number,
-  end: number,
-): number | null {
-  const from = start - 0.08;
-  const to = Math.min(Math.max(end, start + 0.16), start + 0.22);
-  let peak = 0;
-  const window: { t: number; rms: number }[] = [];
-  for (const frame of frames) {
-    if (frame.t < from || frame.t > to) continue;
-    window.push(frame);
-    if (frame.rms > peak) peak = frame.rms;
-  }
-  if (peak < 1e-4 || !window.length) return null;
-  const thresh = peak * 0.35;
-  for (const frame of window) {
-    if (frame.rms >= thresh) return frame.t;
-  }
-  return null;
-}
-
-function median(values: number[]): number {
-  if (!values.length) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  if (sorted.length % 2) return sorted[mid] ?? 0;
-  return ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
-}
-
-export function scoreOnsets(
-  samples: Float32Array,
-  sampleRate: number,
-  slices: { start: number; end: number }[],
-): AlignmentReport {
-  const frames = frameRms(samples, sampleRate);
-  const offsets: number[] = [];
-  let onTime = 0;
-  for (const slice of slices) {
-    if (!(slice.end > slice.start)) continue;
-    const onset = energyOnset(frames, slice.start, slice.end);
-    if (onset == null) continue;
-    offsets.push(onset - slice.start);
-    if (onset >= slice.start - ONSET_EARLY_SEC && onset <= slice.end) onTime++;
-  }
-  const med = median(offsets);
-  const clustered =
-    offsets.length >= 2 &&
-    offsets.filter((delta) => Math.abs(delta - med) <= CLUSTER_SEC).length / offsets.length >= 0.7;
-  const offsetSec = clustered && Math.abs(med) >= SHIFT_MIN_SEC ? med : 0;
-  return { checked: offsets.length, onTime, medianOffset: med, clustered, offsetSec };
-}
-
+/** Seconds only. Does not move slices to chase an onset. */
 export function alignCharTimes(opts: {
   text: string;
   graphChars: string[];
@@ -158,38 +107,214 @@ export function alignCharTimes(opts: {
   duration?: number;
   samples?: Float32Array;
   sampleRate?: number;
-}): { charTimes: [number, number][]; unitConverted: boolean; report: AlignmentReport | null } {
+}): { charTimes: [number, number][]; unitConverted: boolean } {
+  void opts.text;
+  void opts.graphChars;
+  void opts.samples;
+  void opts.sampleRate;
   const normalized = normalizeTimestampUnit(opts.charTimes, opts.duration);
-  let times = normalized.times;
-  let report: AlignmentReport | null = null;
-  if (opts.samples && opts.sampleRate && opts.samples.length > 0) {
-    const slices = syllableTimesFromChars(opts.text, opts.graphChars, times).filter(
-      (slice) => slice.end > slice.start,
-    );
-    report = scoreOnsets(opts.samples, opts.sampleRate, slices);
-    if (report.offsetSec !== 0) {
-      const shift = report.offsetSec;
-      times = times.map(([start, end]) => {
-        const a = Math.max(0, start + shift);
-        return [a, Math.max(a, end + shift)] as [number, number];
-      });
+  return { charTimes: normalized.times, unitConverted: normalized.converted };
+}
+
+type IndexedChar = { ch: string; gi: number | null };
+type MatchBlock = { a: number; b: number; size: number };
+
+function isReadingChar(ch: string): boolean {
+  if (!ch) return false;
+  if (isHan(ch)) return true;
+  return tonelessReading(ch) !== ch;
+}
+
+/**
+ * Han characters in `text`, each pointing at a token in `graphChars`.
+ * A mirrored timestamp list keeps the character index.
+ * Otherwise tokens match in order by toneless reading, so 她 lines up with 他
+ * and 2 lines up with 二 without borrowing a later character.
+ */
+export function graphIndex(text: string, graphChars: string[]): IndexedChar[] {
+  const chars = [...text];
+  const mirrored =
+    graphChars.length === chars.length && graphChars.every((ch, i) => ch === chars[i]);
+  if (mirrored) {
+    const out: IndexedChar[] = [];
+    chars.forEach((ch, i) => {
+      if (isHan(ch)) out.push({ ch, gi: i });
+    });
+    return out;
+  }
+
+  const hans = chars.filter(isHan);
+  const gpos: number[] = [];
+  graphChars.forEach((ch, i) => {
+    if (ch && isReadingChar(ch)) gpos.push(i);
+  });
+  const left = hans.map((ch) => tonelessReading(ch));
+  const right = gpos.map((i) => tonelessReading(graphChars[i] ?? ""));
+  const out: IndexedChar[] = hans.map((ch) => ({ ch, gi: null }));
+  for (const block of matchingBlocks(left, right)) {
+    for (let k = 0; k < block.size; k++) {
+      const han = hans[block.a + k];
+      const gi = gpos[block.b + k];
+      if (han == null || gi == null) continue;
+      out[block.a + k] = { ch: han, gi };
     }
   }
-  return { charTimes: times, unitConverted: normalized.converted, report };
+  return out;
+}
+
+function matchingBlocks(a: string[], b: string[]): MatchBlock[] {
+  const b2j = new Map<string, number[]>();
+  b.forEach((item, j) => {
+    const list = b2j.get(item);
+    if (list) list.push(j);
+    else b2j.set(item, [j]);
+  });
+  const blocks: MatchBlock[] = [];
+  const walk = (alo: number, ahi: number, blo: number, bhi: number) => {
+    const match = longestMatch(a, b2j, alo, ahi, blo, bhi);
+    if (match.size === 0) return;
+    walk(alo, match.a, blo, match.b);
+    blocks.push(match);
+    walk(match.a + match.size, ahi, match.b + match.size, bhi);
+  };
+  walk(0, a.length, 0, b.length);
+  return blocks;
+}
+
+function longestMatch(
+  a: string[],
+  b2j: Map<string, number[]>,
+  alo: number,
+  ahi: number,
+  blo: number,
+  bhi: number,
+): MatchBlock {
+  let bestA = alo;
+  let bestB = blo;
+  let bestSize = 0;
+  let j2len = new Map<number, number>();
+  for (let i = alo; i < ahi; i++) {
+    const next = new Map<number, number>();
+    const js = b2j.get(a[i] ?? "") ?? [];
+    for (const j of js) {
+      if (j < blo) continue;
+      if (j >= bhi) break;
+      const k = (j2len.get(j - 1) ?? 0) + 1;
+      next.set(j, k);
+      if (k > bestSize) {
+        bestA = i - k + 1;
+        bestB = j - k + 1;
+        bestSize = k;
+      }
+    }
+    j2len = next;
+  }
+  return { a: bestA, b: bestB, size: bestSize };
+}
+
+/**
+ * Playback windows for each hanzi character.
+ * `graphChars` / `charTimes` are xAI TTS timestamps, or STT words expanded to characters.
+ * Token starts are kept (minus a fixed lead). Token ends are rebuilt from the waveform
+ * because the aligner stops about 100 ms before the vowel finishes.
+ */
+export function sliceWindows(
+  hanzi: string,
+  graphChars: string[],
+  charTimes: [number, number][],
+  samples: Float32Array,
+  sampleRate: number,
+): CharSpan[] {
+  const idx = graphIndex(hanzi, graphChars);
+  const frames = frameRms(samples, sampleRate).map((frame) => ({
+    t: frame.t + 0.01,
+    rms: frame.rms,
+  }));
+  const sorted = frames.map((frame) => frame.rms).sort((a, b) => a - b);
+  const peak = sorted[Math.floor(0.99 * (sorted.length - 1))] ?? 1;
+  const dur = sampleRate > 0 ? samples.length / sampleRate : 0;
+  type Span = { ch: string; a: number; e: number; kind: "join" | "pause" } | null;
+  const spans: Span[] = idx.map(({ ch, gi }, k) => {
+    const token = gi == null ? undefined : charTimes[gi];
+    if (gi == null || !token || !(token[1] > token[0])) return null;
+    const [a, b] = token;
+    const nxt = gi + 1;
+    if (nxt < graphChars.length && nxt < charTimes.length && isHan(graphChars[nxt] ?? "")) {
+      const ns = charTimes[nxt]?.[0] ?? b;
+      let e = ns;
+      if (ns > b) {
+        let best = Infinity;
+        for (const frame of frames) {
+          if (frame.t >= b && frame.t <= ns && frame.rms < best) {
+            best = frame.rms;
+            e = frame.t;
+          }
+        }
+      }
+      return { ch, a, e, kind: "join" };
+    }
+    let cap = dur;
+    for (let later = k + 1; later < idx.length; later++) {
+      const g2 = idx[later]?.gi;
+      if (g2 != null && g2 < charTimes.length) {
+        cap = charTimes[g2]?.[0] ?? cap;
+        break;
+      }
+    }
+    const need = Math.max(1, Math.round(SLICE.MIN_SIL_SEC / 0.005));
+    let run = 0;
+    let quiet: number | null = null;
+    for (let j = 0; j < frames.length; j++) {
+      const frame = frames[j];
+      if (!frame || frame.t < b) continue;
+      if (frame.t >= cap) break;
+      run = frame.rms < SLICE.OFF_K * peak ? run + 1 : 0;
+      if (run >= need) {
+        quiet = (frames[j - need + 1]?.t ?? frame.t) + SLICE.TAIL_SEC;
+        break;
+      }
+    }
+    return { ch, a, e: Math.min(Math.max(quiet ?? cap, b), cap), kind: "pause" };
+  });
+  return spans.map((span, k) => {
+    const ch = idx[k]?.ch ?? "";
+    if (!span) return { hanzi: ch, start: 0, end: 0 };
+    const prev = k > 0 ? spans[k - 1] : null;
+    const prevPause = k === 0 || !prev || prev.kind === "pause";
+    const start = Math.max(0, span.a - (prevPause ? SLICE.PAD_EDGE_SEC : 0) - SLICE.LEAD_SEC);
+    const end = Math.min(dur, span.e + (span.kind === "pause" ? SLICE.PAD_EDGE_SEC : 0));
+    return { hanzi: span.ch, start, end: end > start ? end : start };
+  });
+}
+
+export function timedCharsFromWords(
+  words: { text: string; start: number; end: number }[],
+): { graphChars: string[]; charTimes: [number, number][] } {
+  const graphChars: string[] = [];
+  const charTimes: [number, number][] = [];
+  for (const word of words) {
+    const chars = [...word.text];
+    if (!chars.length) continue;
+    const span = Math.max(0, word.end - word.start);
+    chars.forEach((ch, i) => {
+      graphChars.push(ch);
+      charTimes.push([
+        word.start + (span * i) / chars.length,
+        word.start + (span * (i + 1)) / chars.length,
+      ]);
+    });
+  }
+  return { graphChars, charTimes };
 }
 
 export type OffCase = {
   dictionaryTone: number;
   spokenTone: number;
   heardTone: number | null;
-  /** Slice boundary failed the energy check, or the whole take needs one shift. */
   timingOff: boolean;
 };
 
-/**
- * Cases the dictionary-tone comparison would mark off.
- * A bad boundary counts as timing, including when sandhi also changed the tone.
- */
+/** Cases the dictionary-tone comparison would mark off. */
 export function partitionOffCases(cases: OffCase[]): { off: number; timing: number; tone: number } {
   let off = 0;
   let timing = 0;

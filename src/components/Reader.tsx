@@ -7,8 +7,6 @@ import {
   alignUserSyllableTimes,
   buildSyllablePitches,
   extractPitch,
-  referenceSyllables,
-  syllableTimesFromChars,
 } from "@/lib/pitch";
 import { getBook, getStory, saveStory, upsertNote } from "@/lib/storage";
 import { compareHanzi, glueOrphanPunct, isHan } from "@/lib/text";
@@ -27,8 +25,6 @@ import {
   emptyNote,
   mergeSentences,
   base64ToBuffer,
-  hanCharOffsets,
-  countBefore,
   loadReferenceGraph,
   decodeReference,
 } from "@/components/ReaderHelpers";
@@ -187,20 +183,18 @@ export function Reader({ storyId }: { storyId: string }) {
         abortRef.current = controller;
         setPlaying(true);
         setBusy("");
-        const hanIndex = hanCharOffsets(s.hanzi);
         await playBuffer(tts.audio, {
           signal: controller.signal,
           onTime: (t) => {
             if (playGen.current !== gen) return;
             setPlayheadT(t);
-            const gi = tts.charTimes.findIndex(
-              ([start, end]) => t >= start && t < end,
-            );
-            if (gi >= 0) {
-              const ch = tts.graphChars[gi];
-              const mapped = hanIndex.get(`${ch}:${countBefore(tts.graphChars, gi, ch)}`);
-              setSpokenChar(mapped ?? null);
-            }
+            let spoken: number | null = null;
+            refGraph.syllables.forEach((syllable, i) => {
+              if (syllable.end > syllable.start && t >= syllable.start && t < syllable.end) {
+                spoken = i;
+              }
+            });
+            setSpokenChar(spoken);
           },
         });
       } catch (err) {
@@ -250,6 +244,7 @@ export function Reader({ storyId }: { storyId: string }) {
       setPlaying(true);
       try {
         await playSlice(source, start, end, {
+          padSec: 0,
           signal: controller.signal,
           onTime: (t) => {
             if (playGen.current === gen) setPlayheadT(t);
@@ -299,7 +294,7 @@ export function Reader({ storyId }: { storyId: string }) {
         };
         if (!response.ok) throw new Error(body.error || "Could not hear that.");
         const compared = compareHanzi(sentence.hanzi, body.text ?? "");
-        const { refPitch, duration } = await decodeReference(
+        const { refPitch, duration, windows } = await decodeReference(
           sentence,
           tts,
           story.id,
@@ -307,24 +302,22 @@ export function Reader({ storyId }: { storyId: string }) {
           pitchCache.current,
         );
         const userPitch = extractPitch(take.samples, take.sampleRate);
-        const refTimes = syllableTimesFromChars(
-          sentence.hanzi,
-          tts.graphChars,
-          tts.charTimes,
-        );
         const userDuration =
           body.duration ?? take.samples.length / take.sampleRate;
         const userTimes = alignUserSyllableTimes({
           expectedChars: compared.expectedChars,
+          expectedText: sentence.hanzi,
           heardChars: compared.heardChars,
           sttWords: body.words ?? [],
           userPitch,
           userDuration,
           ttsDuration: duration,
+          samples: take.samples,
+          sampleRate: take.sampleRate,
         });
         const syllables = buildSyllablePitches({
           words: sentence.words,
-          refTimes,
+          refTimes: windows,
           userTimes,
           refPitch,
           userPitch,

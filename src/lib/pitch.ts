@@ -1,5 +1,6 @@
 import type { PitchPoint, SyllablePitch, Word } from "./types";
-import { syllableTimesFromChars } from "./align-audio";
+import { sliceWindows, syllableTimesFromChars, timedCharsFromWords } from "./align-audio";
+import { tonelessReading } from "./pinyin-readings";
 import { pinyinSyllablesForWord } from "./pinyin";
 import { spokenTones } from "./sandhi";
 import { isHan } from "./text";
@@ -286,57 +287,62 @@ function resizeRuns(
   return out;
 }
 
-function charTimesFromStt(
-  words: { text: string; start: number; end: number }[],
-): { hanzi: string; start: number; end: number }[] {
-  const pieces: { hanzi: string; start: number; end: number }[] = [];
-  for (const w of words) {
-    const chars = [...w.text].filter(isHan);
-    if (!chars.length) continue;
-    const span = Math.max(0.05, w.end - w.start);
-    chars.forEach((ch, i) => {
-      pieces.push({
-        hanzi: ch,
-        start: w.start + (span * i) / chars.length,
-        end: w.start + (span * (i + 1)) / chars.length,
-      });
-    });
-  }
-  return pieces;
-}
-
 function assignPieces(
   expectedChars: string[],
   pieces: { hanzi: string; start: number; end: number }[],
 ): ({ hanzi: string; start: number; end: number } | null)[] {
-  const used = new Set<number>();
+  let cursor = 0;
   return expectedChars.map((hanzi) => {
-    const idx = pieces.findIndex((p, i) => !used.has(i) && p.hanzi === hanzi);
-    if (idx < 0) return null;
-    used.add(idx);
-    const p = pieces[idx];
-    return {
-      hanzi,
-      start: p.start,
-      end: Math.max(p.end, p.start + 0.05),
-    };
+    const want = tonelessReading(hanzi);
+    for (let i = cursor; i < pieces.length; i++) {
+      const piece = pieces[i];
+      if (!piece) continue;
+      if (tonelessReading(piece.hanzi) !== want) continue;
+      cursor = i + 1;
+      return { hanzi, start: piece.start, end: piece.end };
+    }
+    return null;
   });
 }
 
 export function alignUserSyllableTimes(opts: {
   expectedChars: string[];
+  /** Sentence text, punctuation included, so pauses stay attached to the right character. */
+  expectedText?: string;
   heardChars: string[];
   sttWords: { text: string; start: number; end: number }[];
   userPitch: PitchPoint[];
   userDuration: number;
   ttsDuration: number;
+  samples?: Float32Array;
+  sampleRate?: number;
 }): ({ hanzi: string; start: number; end: number } | null)[] {
   const expected = opts.expectedChars;
   if (!expected.length) return [];
 
-  const sttPieces = charTimesFromStt(opts.sttWords);
-  if (sttPieces.length) {
-    return assignPieces(expected, sttPieces);
+  const timed = timedCharsFromWords(opts.sttWords);
+  if (timed.graphChars.length) {
+    if (opts.samples && opts.sampleRate && opts.samples.length > 0) {
+      const windows = sliceWindows(
+        opts.expectedText ?? expected.join(""),
+        timed.graphChars,
+        timed.charTimes,
+        opts.samples,
+        opts.sampleRate,
+      );
+      return expected.map((hanzi, i) => {
+        const window = windows[i];
+        if (!window || !(window.end > window.start)) return null;
+        return { hanzi, start: window.start, end: window.end };
+      });
+    }
+    const pieces = timed.graphChars.flatMap((hanzi, i) => {
+      if (!isHan(hanzi) && tonelessReading(hanzi) === hanzi) return [];
+      const span = timed.charTimes[i];
+      if (!span || !(span[1] > span[0])) return [];
+      return [{ hanzi, start: span[0], end: span[1] }];
+    });
+    if (pieces.length) return assignPieces(expected, pieces);
   }
 
   const runs = voicedRuns(opts.userPitch);

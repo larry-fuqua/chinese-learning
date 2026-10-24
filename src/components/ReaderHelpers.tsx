@@ -9,10 +9,11 @@ import type {
   TtsCache,
   Word,
 } from "@/lib/types";
-import { alignCharTimes } from "@/lib/align-audio";
+import type { CharSpan } from "@/lib/align-audio";
+import { normalizeTimestampUnit, sliceWindows } from "@/lib/align-audio";
 import { isHan } from "@/lib/text";
 import { decodeToMono } from "@/lib/wav";
-import { extractPitch, referenceSyllables } from "@/lib/pitch";
+import { buildSyllablePitches, extractPitch } from "@/lib/pitch";
 export function SentenceLine({
   sentence,
   active,
@@ -135,7 +136,7 @@ export async function decodeReference(
   storyId: string,
   speed: number,
   cache: Map<string, PitchPoint[]>,
-): Promise<{ refPitch: PitchPoint[]; duration: number }> {
+): Promise<{ refPitch: PitchPoint[]; duration: number; windows: CharSpan[] }> {
   const key = ttsKey(storyId, sentence.id, speed);
   const decoded = await decodeToMono(tts.audio);
   let refPitch = cache.get(key);
@@ -144,16 +145,16 @@ export async function decodeReference(
     cache.set(key, refPitch);
   }
   const duration = tts.duration || decoded.samples.length / decoded.sampleRate;
-  const aligned = alignCharTimes({
-    text: sentence.hanzi,
-    graphChars: tts.graphChars,
-    charTimes: tts.charTimes,
-    duration,
-    samples: decoded.samples,
-    sampleRate: decoded.sampleRate,
-  });
-  tts.charTimes = aligned.charTimes;
-  return { refPitch, duration };
+  const normalized = normalizeTimestampUnit(tts.charTimes, duration);
+  tts.charTimes = normalized.times;
+  const windows = sliceWindows(
+    sentence.hanzi,
+    tts.graphChars,
+    tts.charTimes,
+    decoded.samples,
+    decoded.sampleRate,
+  );
+  return { refPitch, duration, windows };
 }
 
 export async function loadReferenceGraph(
@@ -163,15 +164,15 @@ export async function loadReferenceGraph(
   speed: number,
   cache: Map<string, PitchPoint[]>,
 ): Promise<ToneGraph> {
-  const { refPitch, duration } = await decodeReference(sentence, tts, storyId, speed, cache);
+  const { refPitch, duration, windows } = await decodeReference(sentence, tts, storyId, speed, cache);
   return {
-    syllables: referenceSyllables(
-      sentence.words,
-      sentence.hanzi,
-      tts.graphChars,
-      tts.charTimes,
+    syllables: buildSyllablePitches({
+      words: sentence.words,
+      refTimes: windows,
+      userTimes: [],
       refPitch,
-    ),
+      userPitch: [],
+    }),
     refPitch,
     userPitch: [],
     duration: duration || lastPitchTime(refPitch),

@@ -4,7 +4,6 @@ import {
   alignCharTimes,
   normalizeTimestampUnit,
   partitionOffCases,
-  scoreOnsets,
   syllableTimesFromChars,
   type OffCase,
 } from "../src/lib/align-audio";
@@ -154,31 +153,16 @@ test("a contour sample stays inside the labeled slice", () => {
   for (const value of voiced) assert.ok(Math.abs(value) < 1);
 });
 
-test("energy onsets accept aligned slices and correct one clustered shift", () => {
+test("alignCharTimes keeps the xAI times and does not apply a global shift", () => {
   const rate = 8000;
   const trueSlices = [0, 1, 2].map((i) => {
     const start = 0.3 + i * 0.4;
     return [start, start + 0.16] as [number, number];
   });
   const samples = bursts(trueSlices, rate);
-  const aligned = scoreOnsets(
-    samples,
-    rate,
-    trueSlices.map(([start, end]) => ({ start, end })),
-  );
-  assert.equal(aligned.offsetSec, 0);
-  assert.equal(aligned.onTime, 3);
-
   const early = trueSlices.map(([start, end]) => [start - 0.12, end - 0.12] as [number, number]);
-  const shifted = scoreOnsets(
-    samples,
-    rate,
-    early.map(([start, end]) => ({ start, end })),
-  );
-  assert.ok(shifted.offsetSec > 0.08 && shifted.offsetSec < 0.14, String(shifted.offsetSec));
-
   const text = "啊啊啊";
-  const fixed = alignCharTimes({
+  const shifted = alignCharTimes({
     text,
     graphChars: [...text],
     charTimes: early,
@@ -186,13 +170,8 @@ test("energy onsets accept aligned slices and correct one clustered shift", () =
     samples,
     sampleRate: rate,
   });
-  assert.ok(Math.abs((fixed.report?.offsetSec ?? 0) - shifted.offsetSec) < 1e-9);
-  const again = scoreOnsets(
-    samples,
-    rate,
-    syllableTimesFromChars(text, [...text], fixed.charTimes),
-  );
-  assert.equal(again.offsetSec, 0);
+  assert.equal(shifted.unitConverted, false);
+  assert.deepEqual(shifted.charTimes, early);
 
   const untouched = alignCharTimes({
     text,
@@ -202,19 +181,7 @@ test("energy onsets accept aligned slices and correct one clustered shift", () =
     samples,
     sampleRate: rate,
   });
-  assert.equal(untouched.report?.offsetSec, 0);
   assert.deepEqual(untouched.charTimes, trueSlices);
-
-  const silent = alignCharTimes({
-    text,
-    graphChars: [...text],
-    charTimes: trueSlices,
-    duration: 1,
-    samples: new Float32Array(rate),
-    sampleRate: rate,
-  });
-  assert.equal(silent.report?.offsetSec, 0);
-  assert.deepEqual(silent.charTimes, trueSlices);
 });
 
 test("dictionary mismatches on aligned audio are tone variation", () => {
@@ -240,51 +207,9 @@ test("dictionary mismatches on aligned audio are tone variation", () => {
     ["好", "hǎo"],
     ["了", "lè"],
   ].map(([hanzi, pinyin]) => ({ hanzi, pinyin }));
-  const text = readings.map((item) => item.hanzi).join("");
   const spoken = spokenTones(readings);
-  const rate = 8000;
-  const trueSlices = readings.map((_, i) => {
-    const start = 0.3 + i * 0.4;
-    return [start, start + 0.16] as [number, number];
-  });
-  const samples = bursts(trueSlices, rate);
-  const duration = samples.length / rate;
-  const graphChars = [...text];
-
-  const aligned = alignCharTimes({
-    text,
-    graphChars,
-    charTimes: trueSlices,
-    duration,
-    samples,
-    sampleRate: rate,
-  });
-  assert.equal(aligned.report?.offsetSec, 0);
-  const alignedShare = partitionOffCases(
-    casesFrom(spoken, aligned.report?.offsetSec !== 0),
-  );
+  const alignedShare = partitionOffCases(casesFrom(spoken, false));
   assert.deepEqual(alignedShare, { off: 10, timing: 0, tone: 10 });
-
-  const early = trueSlices.map(([start, end]) => [start - 0.12, end - 0.12] as [number, number]);
-  const shifted = alignCharTimes({
-    text,
-    graphChars,
-    charTimes: early,
-    duration,
-    samples,
-    sampleRate: rate,
-  });
-  assert.ok((shifted.report?.offsetSec ?? 0) > 0.08);
-  const shiftedShare = partitionOffCases(
-    casesFrom(spoken, (shifted.report?.offsetSec ?? 0) !== 0),
-  );
-  assert.deepEqual(shiftedShare, { off: 10, timing: 10, tone: 0 });
-  const repaired = scoreOnsets(
-    samples,
-    rate,
-    syllableTimesFromChars(text, graphChars, shifted.charTimes),
-  );
-  assert.equal(repaired.offsetSec, 0);
 });
 
 function casesFrom(

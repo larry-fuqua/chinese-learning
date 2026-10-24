@@ -67,7 +67,7 @@ docker compose up -d --build
 
 A named volume is created writable by uid 1001. For a bind mount (`./data:/data`), `chown 1001:1001` that directory first. Stories live in `/data/stories/*.json`. Books live in `/data/books/*.json`. Cached TTS audio lives in `/data/audio/`. The first request after upgrading to books copies existing story and book JSON into `/data/backups/<timestamp>-books-paragraphs-v1/` and leaves the originals in place. The audio cache is not copied.
 
-Character timings live in that audio cache, not in the story JSON. Loading this version does not require a re-save or a re-process of existing stories. The graph applies Mandarin tone sandhi when it draws the expected contour, and it shifts a timestamp only when the waveform onset is systematically off. `DELETE /api/tts/cache` with the bearer key or a session cookie drops the audio JSON only, so the next Hear loads fresh xAI timestamps. See [docs/story-api.md](docs/story-api.md).
+Character timings live in that audio cache, not in the story JSON. Loading this version does not require a re-save or a re-process of existing stories. The graph applies Mandarin tone sandhi when it draws the expected contour. Each character slice starts 30 ms before the xAI token and ends at the quiet point before the next character, or after a short silence at a pause. `DELETE /api/tts/cache` with the bearer key or a session cookie drops the audio JSON only, so the next Hear loads fresh xAI timestamps. See [docs/story-api.md](docs/story-api.md).
 
 Next redirects a trailing slash (`/chinese/`) to `/chinese`. The proxy can forward either path.
 
