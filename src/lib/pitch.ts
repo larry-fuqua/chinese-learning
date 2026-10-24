@@ -1,6 +1,10 @@
 import type { PitchPoint, SyllablePitch, Word } from "./types";
+import { syllableTimesFromChars } from "./align-audio";
 import { pinyinSyllablesForWord } from "./pinyin";
-import { isHan, toneFromPinyin } from "./text";
+import { spokenTones } from "./sandhi";
+import { isHan } from "./text";
+
+export { syllableTimesFromChars } from "./align-audio";
 
 const HOP_SEC = 0.01;
 const WIN_SEC = 0.04;
@@ -157,10 +161,14 @@ export function sliceContour(
   end: number,
   bins = 16,
 ): (number | null)[] {
-  const span = Math.max(0.06, end - start);
-  // Tones live on the vowel: skip the initial consonant / onset.
-  const innerStart = start + span * 0.18;
-  const innerEnd = end - span * 0.06;
+  if (!(end > start)) return Array(bins).fill(null);
+  const span = end - start;
+  let innerStart = start;
+  let innerEnd = end;
+  if (span >= 0.08) {
+    innerStart = start + span * 0.18;
+    innerEnd = Math.max(innerStart, end - span * 0.06);
+  }
   const voiced = voicedSpan(points, innerStart, innerEnd);
   const a0 = voiced?.start ?? innerStart;
   const a1 = voiced?.end ?? innerEnd;
@@ -223,24 +231,6 @@ export function canonicalTone(tone: number): number[] {
         return -0.4;
     }
   });
-}
-
-export function syllableTimesFromChars(
-  hanzi: string,
-  graphChars: string[],
-  charTimes: [number, number][],
-): { hanzi: string; start: number; end: number }[] {
-  const out: { hanzi: string; start: number; end: number }[] = [];
-  let gi = 0;
-  for (const ch of hanzi) {
-    if (!isHan(ch)) continue;
-    while (gi < graphChars.length && graphChars[gi] !== ch) gi++;
-    if (gi < graphChars.length && charTimes[gi]) {
-      out.push({ hanzi: ch, start: charTimes[gi][0], end: charTimes[gi][1] });
-      gi++;
-    }
-  }
-  return out;
 }
 
 export function voicedRuns(
@@ -403,24 +393,26 @@ export function buildSyllablePitches(opts: {
       chars.push({ hanzi: ch, pinyin: marks[i] ?? "" });
     });
   }
+  const tones = spokenTones(chars);
   return chars.map((ch, i) => {
     const ref = opts.refTimes[i];
     const user = opts.userTimes[i];
     const hasUser = !!user && user.end > user.start;
-    const refSemitones = ref
-      ? sliceContour(opts.refPitch, ref.start, Math.max(ref.end, ref.start + 0.08))
-      : Array(16).fill(null);
+    const tone = tones[i];
+    const refSemitones =
+      ref && ref.end > ref.start
+        ? sliceContour(opts.refPitch, ref.start, ref.end)
+        : Array(16).fill(null);
     const userSemitones = hasUser
-      ? sliceContour(
-          opts.userPitch,
-          user.start,
-          Math.max(user.end, user.start + 0.08),
-        )
+      ? sliceContour(opts.userPitch, user.start, user.end)
       : Array(16).fill(null);
     return {
       hanzi: ch.hanzi,
       pinyin: ch.pinyin,
-      expectedTone: toneFromPinyin(ch.pinyin),
+      expectedTone: tone?.spokenTone ?? 5,
+      dictionaryTone: tone?.dictionaryTone ?? 5,
+      spokenTone: tone?.spokenTone ?? 5,
+      toneNote: tone?.toneNote ?? "",
       heardTone: hasUser ? classifyTone(userSemitones) : null,
       start: ref?.start ?? 0,
       end: ref?.end ?? 0,

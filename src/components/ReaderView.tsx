@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { AppHeader } from "@/components/AppHeader";
-import { PitchGraph } from "@/components/PitchGraph";
+import { PitchGraph, type ReplayTrack } from "@/components/PitchGraph";
 import { SentenceLine, emptyNote } from "@/components/ReaderHelpers";
 import { ReaderNotes } from "@/components/ReaderNotes";
 import { sentenceGroups } from "@/lib/text";
@@ -21,6 +21,12 @@ export type ReaderViewProps = {
   graph: ToneGraph | null;
   graphSyllable: number;
   playheadT: number | null;
+  replayTrack: ReplayTrack;
+  setReplayTrack: (track: ReplayTrack) => void;
+  replayIndex: number | null;
+  playingTrack: ReplayTrack | null;
+  hasUserAudio: boolean;
+  replaySyllable: (index: number, alternate: boolean) => void;
   matchByExpected: Map<number, "ok" | "miss" | "sub">;
   editing: boolean;
   draft: Note | null;
@@ -47,6 +53,7 @@ export function ReaderView(p: ReaderViewProps) {
   const {
     story, active, selectedWord, pinyinMode, speed, playing, spokenChar,
     recording, busy, error, graph, graphSyllable, playheadT, matchByExpected,
+    replayTrack, setReplayTrack, replayIndex, playingTrack, hasUserAudio, replaySyllable,
     editing, draft, note,
     setActive, setSelectedWord, setDraft, setEditing, setSpeed, setGraphSyllable,
     stopPlayback, playSentence, playStory, toggleRecord, cyclePinyin,
@@ -236,6 +243,12 @@ export function ReaderView(p: ReaderViewProps) {
             selected={graphSyllable}
             playheadT={playheadT}
             onSelect={setGraphSyllable}
+            replayTrack={replayTrack}
+            onReplayTrack={setReplayTrack}
+            replayIndex={replayIndex}
+            playingTrack={playingTrack}
+            hasUserAudio={hasUserAudio}
+            onReplay={replaySyllable}
           />
         ) : (
           <div className="bg-graph px-4 py-3 text-center font-[family-name:var(--font-sans)] text-xs tracking-[0.14em] text-paper/50 uppercase">

@@ -85,7 +85,12 @@ export type PitchPoint = {
 export type SyllablePitch = {
   hanzi: string;
   pinyin: string;
+  /** Tone the graph compares and draws. Spoken tone after sandhi and neutral tone. */
   expectedTone: number;
+  dictionaryTone: number;
+  spokenTone: number;
+  /** Why spoken tone differs from the dictionary tone. Empty when they match. */
+  toneNote: string;
   heardTone: number | null;
   start: number;
   end: number;

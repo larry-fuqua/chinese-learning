@@ -30,6 +30,24 @@ export async function readTtsCache(text: string, speed: number): Promise<CachedT
   }
 }
 
+export async function clearTtsCache(): Promise<number> {
+  const dir = path.join(dataDir(), "audio");
+  let names: string[];
+  try {
+    names = await fs.readdir(dir);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return 0;
+    throw err;
+  }
+  let deleted = 0;
+  for (const name of names) {
+    if (!name.endsWith(".json")) continue;
+    await fs.unlink(path.join(dir, name));
+    deleted++;
+  }
+  return deleted;
+}
+
 export async function writeTtsCache(text: string, speed: number, payload: CachedTts): Promise<void> {
   const file = cacheFile(text, speed);
   await fs.mkdir(path.dirname(file), { recursive: true });

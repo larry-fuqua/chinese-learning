@@ -2,23 +2,41 @@
 
 import { useEffect, useRef } from "react";
 import { canonicalTone } from "@/lib/pitch";
+import { contourVerdict, toneDifferenceLabel } from "@/lib/sandhi";
 import { toneName } from "@/lib/text";
 import type { PitchPoint, SyllablePitch, ToneGraph } from "@/lib/types";
+
+export type ReplayTrack = "model" | "yours";
 
 export function PitchGraph({
   graph,
   selected,
   playheadT,
   onSelect,
+  replayTrack,
+  onReplayTrack,
+  replayIndex,
+  playingTrack,
+  hasUserAudio,
+  onReplay,
 }: {
   graph: ToneGraph;
   selected: number;
   playheadT: number | null;
   onSelect: (index: number) => void;
+  replayTrack: ReplayTrack;
+  onReplayTrack: (track: ReplayTrack) => void;
+  replayIndex: number | null;
+  playingTrack: ReplayTrack | null;
+  hasUserAudio: boolean;
+  onReplay: (index: number, alternate: boolean) => void;
 }) {
   const syllable = graph.syllables[selected] ?? graph.syllables[0];
   const hasUserTake = graph.userPitch.some((p) => p.hz != null);
   const syllableHasUser = syllable?.userStart != null;
+  const difference = syllable
+    ? toneDifferenceLabel(syllable.dictionaryTone, syllable.spokenTone, syllable.toneNote)
+    : null;
 
   return (
     <section className="bg-graph text-paper">
@@ -31,10 +49,11 @@ export function PitchGraph({
             <p className="min-w-0 truncate font-[family-name:var(--font-sans)] text-xs text-paper/80">
               <span className="hanzi text-base text-paper">{syllable.hanzi}</span>{" "}
               {syllable.pinyin} · {toneName(syllable.expectedTone)}
+              {difference ? ` · ${difference}` : ""}
               {syllableHasUser && syllable.heardTone != null
                 ? ` · yours ${toneName(syllable.heardTone)}`
                 : ""}
-              {hasUserTake ? toneVerdict(syllable) : ""}
+              {hasUserTake ? contourVerdict(syllable) : ""}
             </p>
           ) : null}
           {graph.heard ? (
@@ -67,42 +86,82 @@ export function PitchGraph({
             duration={graph.duration}
             playheadT={playheadT}
             selected={selected}
+            replayIndex={replayIndex}
+            playingTrack={playingTrack}
           />
           <div className="w-36 shrink-0 sm:w-44">
             <SyllableCanvas syllable={syllable} showUser={syllableHasUser} />
           </div>
         </div>
 
-        <div className="mt-1 flex flex-wrap gap-0.5">
-          {graph.syllables.map((s, i) => (
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <div
+            className="flex rounded-full bg-white/10 p-0.5 font-[family-name:var(--font-sans)] text-[11px]"
+            role="group"
+            aria-label="Which recording a character plays"
+          >
             <button
-              key={`${s.hanzi}-${i}`}
               type="button"
-              onClick={() => onSelect(i)}
-              className={`hanzi min-w-7 rounded px-1.5 py-0.5 text-base ${
-                i === selected
-                  ? "bg-paper text-ink"
-                  : s.userStart == null && hasUserTake
-                    ? "bg-white/10 text-paper/35 hover:bg-white/16"
-                    : "bg-white/10 text-paper hover:bg-white/16"
+              onClick={() => onReplayTrack("model")}
+              className={`rounded-full px-2 py-0.5 ${
+                replayTrack === "model" ? "bg-paper text-ink" : "text-paper/70"
               }`}
-              title={`${s.pinyin} ${toneName(s.expectedTone)}`}
+              aria-pressed={replayTrack === "model"}
             >
-              {s.hanzi}
+              Model
             </button>
-          ))}
+            <button
+              type="button"
+              disabled={!hasUserAudio}
+              onClick={() => onReplayTrack("yours")}
+              className={`rounded-full px-2 py-0.5 disabled:opacity-40 ${
+                replayTrack === "yours" ? "bg-paper text-ink" : "text-paper/70"
+              }`}
+              aria-pressed={replayTrack === "yours"}
+            >
+              Yours
+            </button>
+          </div>
+          <p className="font-[family-name:var(--font-sans)] text-[11px] text-paper/55">
+            Click a character to hear {replayTrack === "model" ? "the model" : "your recording"}.
+            Shift-click hears the other.
+          </p>
+        </div>
+        <div className="mt-1 flex flex-wrap gap-0.5">
+          {graph.syllables.map((s, i) => {
+            const diff = toneDifferenceLabel(s.dictionaryTone, s.spokenTone, s.toneNote);
+            const playing = replayIndex === i;
+            return (
+              <button
+                key={`${s.hanzi}-${i}`}
+                type="button"
+                onClick={(event) => {
+                  onSelect(i);
+                  onReplay(i, event.shiftKey);
+                }}
+                className={`hanzi min-w-7 rounded px-1.5 py-0.5 text-base ${
+                  playing
+                    ? "bg-[#e8c27a] text-ink ring-2 ring-[#e8c27a]"
+                    : i === selected
+                      ? "bg-paper text-ink"
+                      : s.userStart == null && hasUserTake
+                        ? "bg-white/10 text-paper/35 hover:bg-white/16"
+                        : "bg-white/10 text-paper hover:bg-white/16"
+                }`}
+                title={
+                  diff
+                    ? `${s.pinyin} ${toneName(s.spokenTone)} · ${diff}`
+                    : `${s.pinyin} ${toneName(s.spokenTone)}`
+                }
+              >
+                {s.hanzi}
+              </button>
+            );
+          })}
         </div>
       </div>
     </section>
   );
-}
-
-function toneVerdict(s: SyllablePitch): string {
-  if (s.userStart == null) return " · not in this take";
-  if (s.expectedTone === 5) return " · light / short";
-  if (s.heardTone == null) return " · no clear pitch — try closer to the mic";
-  if (s.heardTone === s.expectedTone) return " · shape matches";
-  return " · shape is off";
 }
 
 function SentenceCanvas({
@@ -112,6 +171,8 @@ function SentenceCanvas({
   duration,
   playheadT,
   selected,
+  replayIndex,
+  playingTrack,
 }: {
   refPitch: PitchPoint[];
   userPitch: PitchPoint[];
@@ -119,6 +180,8 @@ function SentenceCanvas({
   duration: number;
   playheadT: number | null;
   selected: number;
+  replayIndex: number | null;
+  playingTrack: ReplayTrack | null;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -177,7 +240,10 @@ function SentenceCanvas({
       if (s.end > s.start) {
         const x0 = (s.start / span) * width;
         const x1 = (s.end / span) * width;
-        if (i === selected) {
+        if (replayIndex === i && playingTrack === "model") {
+          ctx.fillStyle = "rgba(232, 194, 122, 0.32)";
+          ctx.fillRect(x0, refTop, Math.max(2, x1 - x0), band);
+        } else if (i === selected) {
           ctx.fillStyle = "rgba(232, 194, 122, 0.12)";
           ctx.fillRect(x0, refTop, Math.max(2, x1 - x0), band);
         }
@@ -189,7 +255,10 @@ function SentenceCanvas({
       if (s.userStart != null && s.userEnd != null && s.userEnd > s.userStart) {
         const ux0 = (s.userStart / span) * width;
         const ux1 = (s.userEnd / span) * width;
-        if (i === selected) {
+        if (replayIndex === i && playingTrack === "yours") {
+          ctx.fillStyle = "rgba(243, 234, 216, 0.28)";
+          ctx.fillRect(ux0, userTop, Math.max(2, ux1 - ux0), band);
+        } else if (i === selected) {
           ctx.fillStyle = "rgba(243, 234, 216, 0.08)";
           ctx.fillRect(ux0, userTop, Math.max(2, ux1 - ux0), band);
         }
@@ -215,7 +284,7 @@ function SentenceCanvas({
       ctx.lineTo(x, height);
       ctx.stroke();
     }
-  }, [refPitch, userPitch, syllables, duration, playheadT, selected]);
+  }, [refPitch, userPitch, syllables, duration, playheadT, selected, replayIndex, playingTrack]);
 
   return (
     <canvas

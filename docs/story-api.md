@@ -306,6 +306,16 @@ The stored story is a normal story plus:
 
 The library asks for confirmation and says that chapters remain as separate stories.
 
+## TTS cache
+
+Character timings are not stored on the story. Hear reads xAI `graph_chars` and `graph_times` (seconds, one pair per input character) from `DATA_DIR/audio/<hash>.json`, or calls xAI and writes that file. The pitch graph compares a contour to the spoken tone after tone sandhi and neutral tone, and it checks slice boundaries against the waveform. A story file does not need to be rewritten for that.
+
+`DELETE /api/tts/cache` removes only the audio JSON files. The next Hear fetches timestamps again. Stories and books stay in place. Same auth as the other routes.
+
+```json
+{ "deleted": 3 }
+```
+
 ## Migration
 
 Story files are still one JSON file per story under `DATA_DIR/stories/`. Books are `DATA_DIR/books/<id>.json`. Nothing is rewritten in place: a story with no `paragraphs` field still renders as one paragraph, and a story with no `bookId` stays standalone.

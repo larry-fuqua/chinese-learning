@@ -9,12 +9,10 @@ import type {
   TtsCache,
   Word,
 } from "@/lib/types";
+import { alignCharTimes } from "@/lib/align-audio";
 import { isHan } from "@/lib/text";
 import { decodeToMono } from "@/lib/wav";
-import {
-  extractPitch,
-  referenceSyllables,
-} from "@/lib/pitch";
+import { extractPitch, referenceSyllables } from "@/lib/pitch";
 export function SentenceLine({
   sentence,
   active,
@@ -131,6 +129,33 @@ export function countBefore(chars: string[], index: number, ch: string): number 
 export function ttsKey(storyId: string, sentenceId: string, speed: number) {
   return `${storyId}:${sentenceId}:${speed.toFixed(2)}`;
 }
+export async function decodeReference(
+  sentence: Sentence,
+  tts: TtsCache,
+  storyId: string,
+  speed: number,
+  cache: Map<string, PitchPoint[]>,
+): Promise<{ refPitch: PitchPoint[]; duration: number }> {
+  const key = ttsKey(storyId, sentence.id, speed);
+  const decoded = await decodeToMono(tts.audio);
+  let refPitch = cache.get(key);
+  if (!refPitch) {
+    refPitch = extractPitch(decoded.samples, decoded.sampleRate);
+    cache.set(key, refPitch);
+  }
+  const duration = tts.duration || decoded.samples.length / decoded.sampleRate;
+  const aligned = alignCharTimes({
+    text: sentence.hanzi,
+    graphChars: tts.graphChars,
+    charTimes: tts.charTimes,
+    duration,
+    samples: decoded.samples,
+    sampleRate: decoded.sampleRate,
+  });
+  tts.charTimes = aligned.charTimes;
+  return { refPitch, duration };
+}
+
 export async function loadReferenceGraph(
   sentence: Sentence,
   tts: TtsCache,
@@ -138,13 +163,7 @@ export async function loadReferenceGraph(
   speed: number,
   cache: Map<string, PitchPoint[]>,
 ): Promise<ToneGraph> {
-  const key = ttsKey(storyId, sentence.id, speed);
-  let refPitch = cache.get(key);
-  if (!refPitch) {
-    const decoded = await decodeToMono(tts.audio);
-    refPitch = extractPitch(decoded.samples, decoded.sampleRate);
-    cache.set(key, refPitch);
-  }
+  const { refPitch, duration } = await decodeReference(sentence, tts, storyId, speed, cache);
   return {
     syllables: referenceSyllables(
       sentence.words,
@@ -155,7 +174,7 @@ export async function loadReferenceGraph(
     ),
     refPitch,
     userPitch: [],
-    duration: tts.duration || lastPitchTime(refPitch),
+    duration: duration || lastPitchTime(refPitch),
     heard: "",
   };
 }

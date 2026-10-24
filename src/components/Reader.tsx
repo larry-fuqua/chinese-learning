@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api-fetch";
-import { playBuffer, startRecorder, type Recorder } from "@/lib/audio";
+import { playBuffer, playSlice, startRecorder, type Recorder } from "@/lib/audio";
 import {
   alignUserSyllableTimes,
   buildSyllablePitches,
@@ -23,18 +23,17 @@ import type {
   TtsCache,
   Word,
 } from "@/lib/types";
-import { decodeToMono } from "@/lib/wav";
 import {
-  SentenceLine,
   emptyNote,
   mergeSentences,
   base64ToBuffer,
   hanCharOffsets,
   countBefore,
-  ttsKey,
   loadReferenceGraph,
+  decodeReference,
 } from "@/components/ReaderHelpers";
 import { ReaderView } from "@/components/ReaderView";
+import type { ReplayTrack } from "@/components/PitchGraph";
 const PINYIN_CYCLE: PinyinMode[] = ["off", "word", "line", "all"];
 export function Reader({ storyId }: { storyId: string }) {
   const [story, setStory] = useState<Story | null>(null);
@@ -51,6 +50,10 @@ export function Reader({ storyId }: { storyId: string }) {
   const [graph, setGraph] = useState<ToneGraph | null>(null);
   const [graphSyllable, setGraphSyllable] = useState(0);
   const [playheadT, setPlayheadT] = useState<number | null>(null);
+  const [replayTrack, setReplayTrack] = useState<ReplayTrack>("model");
+  const [replayIndex, setReplayIndex] = useState<number | null>(null);
+  const [playingTrack, setPlayingTrack] = useState<ReplayTrack | null>(null);
+  const [hasUserAudio, setHasUserAudio] = useState(false);
   const [matches, setMatches] = useState<("ok" | "miss" | "sub" | "extra")[] | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Note | null>(null);
@@ -62,6 +65,9 @@ export function Reader({ storyId }: { storyId: string }) {
   const abortRef = useRef<AbortController | null>(null);
   const recorderRef = useRef<Recorder | null>(null);
   const pitchCache = useRef<Map<string, PitchPoint[]>>(new Map());
+  const playGen = useRef(0);
+  const modelAudioRef = useRef<ArrayBuffer | null>(null);
+  const userAudioRef = useRef<{ samples: Float32Array; sampleRate: number } | null>(null);
   useEffect(() => {
     void getStory(storyId)
       .then((found) => {
@@ -105,11 +111,25 @@ export function Reader({ storyId }: { storyId: string }) {
       return PINYIN_CYCLE[(i + 1) % PINYIN_CYCLE.length];
     });
   }, []);
+  const endIfCurrent = useCallback((gen: number) => {
+    if (playGen.current !== gen) return;
+    setPlaying(false);
+    setSpokenChar(null);
+    setPlayheadT(null);
+    setReplayIndex(null);
+    setPlayingTrack(null);
+    setBusy("");
+  }, []);
   const stopPlayback = useCallback(() => {
+    playGen.current += 1;
     abortRef.current?.abort();
     abortRef.current = null;
     setPlaying(false);
     setSpokenChar(null);
+    setPlayheadT(null);
+    setReplayIndex(null);
+    setPlayingTrack(null);
+    setBusy("");
   }, []);
   const ensureTts = useCallback(
     async (s: Sentence): Promise<TtsCache> => {
@@ -150,9 +170,16 @@ export function Reader({ storyId }: { storyId: string }) {
       setError("");
       setBusy("Hearing…");
       setActive(index);
+      const gen = ++playGen.current;
       try {
         const tts = await ensureTts(s);
+        if (playGen.current !== gen) return;
         const refGraph = await loadReferenceGraph(s, tts, story.id, speed, pitchCache.current);
+        if (playGen.current !== gen) return;
+        modelAudioRef.current = tts.audio;
+        userAudioRef.current = null;
+        setHasUserAudio(false);
+        setReplayTrack("model");
         setGraph(refGraph);
         setGraphSyllable(0);
         setPlayheadT(0);
@@ -164,6 +191,7 @@ export function Reader({ storyId }: { storyId: string }) {
         await playBuffer(tts.audio, {
           signal: controller.signal,
           onTime: (t) => {
+            if (playGen.current !== gen) return;
             setPlayheadT(t);
             const gi = tts.charTimes.findIndex(
               ([start, end]) => t >= start && t < end,
@@ -176,17 +204,66 @@ export function Reader({ storyId }: { storyId: string }) {
           },
         });
       } catch (err) {
-        if ((err as Error).name !== "AbortError") {
+        if ((err as Error).name !== "AbortError" && playGen.current === gen) {
           setError(err instanceof Error ? err.message : "Playback failed.");
         }
       } finally {
-        setPlaying(false);
-        setSpokenChar(null);
-        setPlayheadT(null);
-        setBusy("");
+        endIfCurrent(gen);
       }
     },
-    [active, ensureTts, stopPlayback, story],
+    [active, endIfCurrent, ensureTts, speed, stopPlayback, story],
+  );
+  const replaySyllable = useCallback(
+    async (index: number, alternate: boolean) => {
+      const syllable = graph?.syllables[index];
+      if (!syllable) return;
+      const track: ReplayTrack = alternate
+        ? replayTrack === "model"
+          ? "yours"
+          : "model"
+        : replayTrack;
+      const start = track === "yours" ? syllable.userStart : syllable.start;
+      const end = track === "yours" ? syllable.userEnd : syllable.end;
+      if (start == null || end == null || !(end > start)) {
+        setError(
+          track === "yours"
+            ? "No recording for that character."
+            : "No original timing for that character.",
+        );
+        return;
+      }
+      const source = track === "yours" ? userAudioRef.current : modelAudioRef.current;
+      if (!source) {
+        setError(
+          track === "yours" ? "Record a take to replay your audio." : "Hear the sentence first.",
+        );
+        return;
+      }
+      stopPlayback();
+      setError("");
+      setGraphSyllable(index);
+      const gen = ++playGen.current;
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setReplayIndex(index);
+      setPlayingTrack(track);
+      setPlaying(true);
+      try {
+        await playSlice(source, start, end, {
+          signal: controller.signal,
+          onTime: (t) => {
+            if (playGen.current === gen) setPlayheadT(t);
+          },
+        });
+      } catch (err) {
+        if ((err as Error).name !== "AbortError" && playGen.current === gen) {
+          setError(err instanceof Error ? err.message : "Playback failed.");
+        }
+      } finally {
+        endIfCurrent(gen);
+      }
+    },
+    [endIfCurrent, graph, replayTrack, stopPlayback],
   );
   const playStory = useCallback(async () => {
     if (!story) return;
@@ -222,12 +299,13 @@ export function Reader({ storyId }: { storyId: string }) {
         };
         if (!response.ok) throw new Error(body.error || "Could not hear that.");
         const compared = compareHanzi(sentence.hanzi, body.text ?? "");
-        let refPitch = pitchCache.current.get(ttsKey(story.id, sentence.id, speed));
-        if (!refPitch) {
-          const decoded = await decodeToMono(tts.audio);
-          refPitch = extractPitch(decoded.samples, decoded.sampleRate);
-          pitchCache.current.set(ttsKey(story.id, sentence.id, speed), refPitch);
-        }
+        const { refPitch, duration } = await decodeReference(
+          sentence,
+          tts,
+          story.id,
+          speed,
+          pitchCache.current,
+        );
         const userPitch = extractPitch(take.samples, take.sampleRate);
         const refTimes = syllableTimesFromChars(
           sentence.hanzi,
@@ -242,7 +320,7 @@ export function Reader({ storyId }: { storyId: string }) {
           sttWords: body.words ?? [],
           userPitch,
           userDuration,
-          ttsDuration: tts.duration,
+          ttsDuration: duration,
         });
         const syllables = buildSyllablePitches({
           words: sentence.words,
@@ -255,9 +333,12 @@ export function Reader({ storyId }: { storyId: string }) {
           syllables,
           refPitch,
           userPitch,
-          duration: Math.max(tts.duration, userDuration),
+          duration: Math.max(duration, userDuration),
           heard: body.text ?? "",
         });
+        modelAudioRef.current = tts.audio;
+        userAudioRef.current = { samples: take.samples, sampleRate: take.sampleRate };
+        setHasUserAudio(true);
         setMatches(compared.matches);
         setGraphSyllable(0);
       } catch (err) {
@@ -428,6 +509,12 @@ export function Reader({ storyId }: { storyId: string }) {
       graph={graph}
       graphSyllable={graphSyllable}
       playheadT={playheadT}
+      replayTrack={replayTrack}
+      setReplayTrack={setReplayTrack}
+      replayIndex={replayIndex}
+      playingTrack={playingTrack}
+      hasUserAudio={hasUserAudio}
+      replaySyllable={(index, alternate) => void replaySyllable(index, alternate)}
       matchByExpected={matchByExpected}
       editing={editing}
       draft={draft}

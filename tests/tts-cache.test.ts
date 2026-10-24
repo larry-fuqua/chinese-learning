@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, test } from "node:test";
+import { DELETE } from "../src/app/api/tts/cache/route";
 import { POST } from "../src/app/api/tts/route";
 import { API_KEY } from "./env";
 
@@ -64,4 +65,29 @@ test("TTS caches audio on disk and does not send the xAI key back", async () => 
 
   const files = await fs.readdir(path.join(dir, "audio"));
   assert.equal(files.length, 1);
+});
+
+test("DELETE /api/tts/cache removes audio json and leaves stories", async () => {
+  await fs.mkdir(path.join(dir, "audio"), { recursive: true });
+  await fs.mkdir(path.join(dir, "stories"), { recursive: true });
+  await fs.writeFile(path.join(dir, "audio", "a.json"), "{}");
+  await fs.writeFile(path.join(dir, "audio", "b.json"), "{}");
+  await fs.writeFile(path.join(dir, "audio", "note.txt"), "keep");
+  await fs.writeFile(path.join(dir, "stories", "s.json"), "{}");
+
+  const denied = await DELETE(new Request("http://localhost/api/tts/cache", { method: "DELETE" }));
+  assert.equal(denied.status, 401);
+
+  const ok = await DELETE(
+    new Request("http://localhost/api/tts/cache", {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${API_KEY}` },
+    }),
+  );
+  assert.equal(ok.status, 200);
+  assert.equal((await ok.json()).deleted, 2);
+  const audio = await fs.readdir(path.join(dir, "audio"));
+  assert.deepEqual(audio.sort(), ["note.txt"]);
+  const stories = await fs.readdir(path.join(dir, "stories"));
+  assert.deepEqual(stories, ["s.json"]);
 });
