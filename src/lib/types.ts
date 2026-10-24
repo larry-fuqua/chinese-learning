@@ -35,6 +35,38 @@ export type Story = {
   notes: Record<string, Note>;
   createdAt: string;
   updatedAt: string;
+  /** Set together with chapterNumber when this story is a chapter. */
+  bookId?: string;
+  chapterNumber?: number;
+  chapterTitle?: string;
+  /**
+   * Sentence ids grouped into paragraphs. Omitted for a single paragraph,
+   * including stories saved before paragraphs existed.
+   */
+  paragraphs?: string[][];
+};
+
+export type Book = {
+  id: string;
+  title: string;
+  level: StoryLevel;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ChapterSummary = {
+  id: string;
+  title: string;
+  chapterNumber: number;
+  chapterTitle?: string;
+  level: StoryLevel;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type BookWithChapters = Book & {
+  chapters: ChapterSummary[];
 };
 
 export type TtsCache = {
@@ -95,4 +127,5 @@ export type PrepareResponse = {
   hanzi: string;
   sentences: Sentence[];
   notes: Record<string, Note>;
+  paragraphs?: string[][];
 };

@@ -31,7 +31,7 @@ Do not commit `.env.local` or `data/`.
 
 ### Move an old browser library
 
-Older builds kept stories in IndexedDB (`chinese-reader`). Export that library to JSON **before** upgrading, or open the upgraded app in the same browser: if local stories are still there, the library offers **Upload local stories**. The file Import still accepts `{"version":1,"stories":[...]}` and writes it to the server. Export downloads the same shape.
+Older builds kept stories in this browser's IndexedDB (`chinese-reader`). Export that library to a JSON file **before** opening this version. On load, the app deletes the `chinese-reader` database if it is still there, so a stale local copy does not linger (for example on a Chromebook). File Import still accepts `{"version":1,"stories":[...]}` and writes it to the server. Export downloads the server library in that shape, plus a `books` array.
 
 ## Another device, same backend
 
@@ -65,7 +65,7 @@ docker compose up -d --build
 | Process user | uid **1001** (`nextjs`) |
 | Health | `GET /chinese/api/health` → `200 {"ok":true}` with no auth |
 
-A named volume is created writable by uid 1001. For a bind mount (`./data:/data`), `chown 1001:1001` that directory first. Stories live in `/data/stories/*.json`. Cached TTS audio lives in `/data/audio/`.
+A named volume is created writable by uid 1001. For a bind mount (`./data:/data`), `chown 1001:1001` that directory first. Stories live in `/data/stories/*.json`. Books live in `/data/books/*.json`. Cached TTS audio lives in `/data/audio/`. The first request after upgrading to books copies existing story and book JSON into `/data/backups/<timestamp>-books-paragraphs-v1/` and leaves the originals in place. The audio cache is not copied.
 
 Next redirects a trailing slash (`/chinese/`) to `/chinese`. The proxy can forward either path.
 

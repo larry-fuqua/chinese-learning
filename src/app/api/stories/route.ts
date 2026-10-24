@@ -1,10 +1,11 @@
 import { unauthorized, privateJson } from "@/lib/guard";
 import { errorJson, MAX_STORY_BYTES, readJsonLimited, storeFailure } from "@/lib/http";
 import { prepareFromInput } from "@/lib/prepare";
-import { createStory, listSummaries } from "@/lib/story-store";
-import { parseCreateBody } from "@/lib/story-validate";
-import { newId } from "@/lib/text";
-import type { Story } from "@/lib/types";
+import { insertStory } from "@/lib/story-commit";
+import { listSummaries } from "@/lib/story-store";
+import { parseCreateBody, type MinimalStoryInput } from "@/lib/story-validate";
+import { newId, paragraphGroupsForSentences, splitParagraphBlocks } from "@/lib/text";
+import type { PrepareResponse, Story } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,26 +39,40 @@ export async function POST(request: Request) {
       if (!prepared.prepared.sentences.length) {
         return errorJson(502, "Prepare did not return any sentences.");
       }
-      const now = new Date().toISOString();
-      const story: Story = {
-        id: parsed.value.id ?? newId(),
-        title: parsed.value.title,
-        level: parsed.value.level,
-        hanzi: prepared.prepared.hanzi || parsed.value.hanzi,
-        sentences: prepared.prepared.sentences,
-        notes: prepared.prepared.notes ?? {},
-        createdAt: now,
-        updatedAt: now,
-      };
-      const created = await createStory(story);
-      if (created === "exists") return errorJson(409, "A story with this id already exists.");
-      return privateJson(created, 201);
+      const created = await insertStory(storyFromPrepared(parsed.value, prepared.prepared));
+      if (!created.ok) return errorJson(created.status, created.error);
+      return privateJson(created.story, 201);
     }
 
-    const created = await createStory(parsed.value.story);
-    if (created === "exists") return errorJson(409, "A story with this id already exists.");
-    return privateJson(created, 201);
+    const created = await insertStory(parsed.value.story);
+    if (!created.ok) return errorJson(created.status, created.error);
+    return privateJson(created.story, 201);
   } catch (err) {
     return storeFailure(err);
   }
+}
+
+function storyFromPrepared(input: MinimalStoryInput, prepared: PrepareResponse): Story {
+  const now = new Date().toISOString();
+  const paragraphs =
+    prepared.paragraphs ?? paragraphGroupsForSentences(input.hanzi, prepared.sentences);
+  const hanzi =
+    splitParagraphBlocks(input.hanzi).length > 1 ? input.hanzi : prepared.hanzi || input.hanzi;
+  const story: Story = {
+    id: input.id ?? newId(),
+    title: input.title,
+    level: input.level,
+    hanzi,
+    sentences: prepared.sentences,
+    notes: prepared.notes ?? {},
+    createdAt: now,
+    updatedAt: now,
+  };
+  if (paragraphs && paragraphs.length > 1) story.paragraphs = paragraphs;
+  if (input.bookId && input.chapterNumber != null) {
+    story.bookId = input.bookId;
+    story.chapterNumber = input.chapterNumber;
+    if (input.chapterTitle) story.chapterTitle = input.chapterTitle;
+  }
+  return story;
 }

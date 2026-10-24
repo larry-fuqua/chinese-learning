@@ -61,6 +61,91 @@ export function buildSentencesFromHanzi(hanzi: string): Sentence[] {
   return glueOrphanPunct(splitSentences(hanzi).map(buildSentence));
 }
 
+/** Blank lines separate paragraphs. A single newline stays inside a paragraph. */
+export function splitParagraphBlocks(hanzi: string): string[] {
+  const normalized = hanzi.replace(/\r\n/g, "\n").trim();
+  if (!normalized) return [];
+  return normalized
+    .split(/\n\s*\n/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Group sentence ids by blank-line paragraphs in `hanzi`.
+ * Returns undefined when the text is a single paragraph.
+ * When the sentence split does not match the blocks, sentences are
+ * divided across as many paragraphs as can each receive one sentence.
+ */
+export function paragraphGroupsForSentences(
+  hanzi: string,
+  sentences: { id: string }[],
+): string[][] | undefined {
+  const blocks = splitParagraphBlocks(hanzi);
+  if (blocks.length <= 1 || sentences.length === 0) return undefined;
+  const counts = blocks.map((block) => splitSentences(block).length);
+  const total = counts.reduce((sum, count) => sum + count, 0);
+  const sizes =
+    total === sentences.length && counts.every((count) => count > 0)
+      ? counts
+      : proportionalParagraphSizes(blocks.length, sentences.length);
+  const groups: string[][] = [];
+  let offset = 0;
+  for (const size of sizes) {
+    const slice = sentences.slice(offset, offset + size);
+    offset += size;
+    if (slice.length) groups.push(slice.map((sentence) => sentence.id));
+  }
+  if (offset < sentences.length && groups.length) {
+    groups[groups.length - 1].push(...sentences.slice(offset).map((sentence) => sentence.id));
+  }
+  if (groups.length <= 1) return undefined;
+  return groups;
+}
+
+function proportionalParagraphSizes(blockCount: number, sentenceCount: number): number[] {
+  const groups = Math.min(blockCount, sentenceCount);
+  if (groups <= 1) return [sentenceCount];
+  const base = Math.floor(sentenceCount / groups);
+  let extra = sentenceCount % groups;
+  const sizes: number[] = [];
+  for (let i = 0; i < groups; i++) {
+    sizes.push(base + (extra > 0 ? 1 : 0));
+    if (extra > 0) extra -= 1;
+  }
+  return sizes;
+}
+
+export type IndexedSentence<T> = { sentence: T; index: number };
+
+/** One group when `paragraphs` is missing or a single paragraph. */
+export function sentenceGroups<T extends { id: string }>(
+  sentences: T[],
+  paragraphs?: string[][],
+): IndexedSentence<T>[][] {
+  const single = [sentences.map((sentence, index) => ({ sentence, index }))];
+  if (!paragraphs || paragraphs.length <= 1 || sentences.length === 0) return single;
+  const indexById = new Map(sentences.map((sentence, index) => [sentence.id, index]));
+  const used = new Set<string>();
+  const groups: IndexedSentence<T>[][] = [];
+  for (const ids of paragraphs) {
+    const rows: IndexedSentence<T>[] = [];
+    for (const id of ids) {
+      const index = indexById.get(id);
+      if (index === undefined || used.has(id)) continue;
+      used.add(id);
+      rows.push({ sentence: sentences[index]!, index });
+    }
+    if (rows.length) groups.push(rows);
+  }
+  const rest = sentences
+    .map((sentence, index) => ({ sentence, index }))
+    .filter((row) => !used.has(row.sentence.id));
+  if (rest.length) groups.push(rest);
+  if (groups.length <= 1) return single;
+  return groups;
+}
+
 export function glueOrphanPunct(sentences: Sentence[]): Sentence[] {
   const out: Sentence[] = [];
   for (const s of sentences) {

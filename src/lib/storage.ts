@@ -1,5 +1,5 @@
 import { apiFetch } from "./api-fetch";
-import type { Note, Story } from "./types";
+import type { BookWithChapters, Note, Story, StoryLevel } from "./types";
 
 async function errorFrom(response: Response): Promise<Error> {
   const body = (await response.json().catch(() => ({}))) as { error?: string };
@@ -12,6 +12,40 @@ export async function listStories(): Promise<Story[]> {
   const data = (await response.json()) as { stories?: Story[] };
   const stories = data.stories ?? [];
   return stories.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export async function listBooks(): Promise<BookWithChapters[]> {
+  const response = await apiFetch("/api/books");
+  if (!response.ok) throw await errorFrom(response);
+  const books = (await response.json()) as BookWithChapters[];
+  return books.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export async function getBook(id: string): Promise<BookWithChapters | undefined> {
+  const response = await apiFetch(`/api/books/${encodeURIComponent(id)}`);
+  if (response.status === 404) return undefined;
+  if (!response.ok) throw await errorFrom(response);
+  return (await response.json()) as BookWithChapters;
+}
+
+export async function createBook(input: {
+  title: string;
+  level: StoryLevel;
+  description?: string;
+}): Promise<BookWithChapters> {
+  const response = await apiFetch("/api/books", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw await errorFrom(response);
+  return (await response.json()) as BookWithChapters;
+}
+
+export async function deleteBook(id: string): Promise<void> {
+  const response = await apiFetch(`/api/books/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (response.status === 404) return;
+  if (!response.ok) throw await errorFrom(response);
 }
 
 export async function getStory(id: string): Promise<Story | undefined> {

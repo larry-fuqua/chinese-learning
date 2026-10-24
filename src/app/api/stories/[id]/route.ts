@@ -1,6 +1,7 @@
 import { unauthorized, privateJson } from "@/lib/guard";
 import { errorJson, MAX_STORY_BYTES, readJsonLimited, storeFailure } from "@/lib/http";
-import { deleteStory, getStory, replaceStory } from "@/lib/story-store";
+import { updateStory } from "@/lib/story-commit";
+import { deleteStory, getStory } from "@/lib/story-store";
 import { isStoryId, parseReplaceBody } from "@/lib/story-validate";
 
 export const runtime = "nodejs";
@@ -32,9 +33,9 @@ export async function PUT(request: Request, context: RouteContext) {
   const parsed = parseReplaceBody(body.value, id);
   if (!parsed.ok) return errorJson(400, parsed.error);
   try {
-    const replaced = await replaceStory(id, parsed.story);
-    if (!replaced) return errorJson(404, "Story not found.");
-    return privateJson(replaced);
+    const replaced = await updateStory(id, parsed.story);
+    if (!replaced.ok) return errorJson(replaced.status, replaced.error);
+    return privateJson(replaced.story);
   } catch (err) {
     return storeFailure(err);
   }

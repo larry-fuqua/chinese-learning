@@ -6,6 +6,8 @@ import {
   looksLikePinyin,
   newId,
   normalizeWord,
+  paragraphGroupsForSentences,
+  splitParagraphBlocks,
 } from "./text";
 import { xaiFetch } from "./xai";
 import { clip, redact } from "./redact";
@@ -121,11 +123,16 @@ function normalizePrepare(parsed: Partial<PrepareResponse>, body: PrepareRequest
   sentences = glueOrphanPunct(sentences);
   if (!sentences.length && hanzi) sentences = buildSentencesFromHanzi(hanzi);
   const notes: Record<string, Note> = {};
-  return {
+  const source = (body.hanzi || "").trim();
+  const paragraphSource = splitParagraphBlocks(source).length > 1 ? source : hanzi;
+  const paragraphs = paragraphGroupsForSentences(paragraphSource, sentences);
+  const prepared: PrepareResponse = {
     title: (parsed.title || body.title || "Untitled").trim(),
     level: parsed.level || body.level || "HSK1",
-    hanzi: hanzi || sentences.map((s: Sentence) => s.hanzi).join(""),
+    hanzi: paragraphSource || sentences.map((s: Sentence) => s.hanzi).join(""),
     sentences,
     notes,
   };
+  if (paragraphs) prepared.paragraphs = paragraphs;
+  return prepared;
 }

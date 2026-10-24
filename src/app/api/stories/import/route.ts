@@ -1,5 +1,6 @@
 import { unauthorized, privateJson } from "@/lib/guard";
 import { errorJson, MAX_STORY_BYTES, readJsonLimited, storeFailure } from "@/lib/http";
+import { upsertBook } from "@/lib/book-store";
 import { upsertStory } from "@/lib/story-store";
 import { parseImportBody } from "@/lib/story-validate";
 
@@ -19,6 +20,9 @@ export async function POST(request: Request) {
       ? (body.value as { stories: unknown[] }).stories.length
       : 0;
   try {
+    for (const book of parsed.books) {
+      await upsertBook(book);
+    }
     for (const story of parsed.stories) {
       await upsertStory(story);
     }

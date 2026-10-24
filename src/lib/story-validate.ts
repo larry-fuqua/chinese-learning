@@ -1,5 +1,5 @@
-import type { Note, NoteSource, Sentence, Story, StoryLevel, Word } from "./types";
-import { newId } from "./text";
+import type { Book, Note, NoteSource, Sentence, Story, StoryLevel, Word } from "./types";
+import { newId, paragraphGroupsForSentences } from "./text";
 
 export const STORY_LEVELS: readonly StoryLevel[] = ["HSK1", "HSK2", "HSK3", "other"];
 const NOTE_SOURCES: readonly NoteSource[] = ["ai", "user", "sample"];
@@ -35,12 +35,21 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
+export type ChapterAssignment = {
+  bookId?: string;
+  chapterNumber?: number;
+  chapterTitle?: string;
+};
+
 export type MinimalStoryInput = {
   mode: "minimal";
   title: string;
   level: StoryLevel;
   hanzi: string;
   id?: string;
+  bookId?: string;
+  chapterNumber?: number;
+  chapterTitle?: string;
 };
 
 export type FullStoryInput = {
@@ -60,7 +69,12 @@ export function parseCreateBody(
   if (!Array.isArray(sentences) || sentences.length === 0) {
     const minimal = parseMinimalFields(record);
     if (!minimal.ok) return minimal;
-    return { ok: true, value: { mode: "minimal", ...minimal.value, id: idResult.id } };
+    const chapter = readChapterAssignment(record);
+    if (!chapter.ok) return chapter;
+    return {
+      ok: true,
+      value: { mode: "minimal", ...minimal.value, id: idResult.id, ...chapterFields(chapter.chapter) },
+    };
   }
 
   const full = parseFullStory(record, { requireId: false });
@@ -107,7 +121,7 @@ export function coerceImportStory(raw: unknown): Story | null {
     typeof record.title === "string" && record.title.trim()
       ? record.title.trim().slice(0, LIMITS.title)
       : "Untitled";
-  return {
+  const story: Story = {
     id: record.id,
     title,
     level: isStoryLevel(record.level) ? record.level : "other",
@@ -118,11 +132,14 @@ export function coerceImportStory(raw: unknown): Story | null {
     createdAt: isIso(record.createdAt) ? record.createdAt : now,
     updatedAt: isIso(record.updatedAt) ? record.updatedAt : now,
   };
+  applyLenientChapter(story, record);
+  applyLenientParagraphs(story, record.paragraphs);
+  return story;
 }
 
 export function parseImportBody(
   body: unknown,
-): { ok: true; stories: Story[] } | { ok: false; error: string } {
+): { ok: true; stories: Story[]; books: Book[] } | { ok: false; error: string } {
   let list: unknown[];
   if (Array.isArray(body)) {
     list = body;
@@ -145,7 +162,16 @@ export function parseImportBody(
     const story = coerceImportStory(item);
     if (story) stories.push(story);
   }
-  return { ok: true, stories };
+  let books: Book[] = [];
+  if (!Array.isArray(body)) {
+    const record = asRecord(body);
+    if (record?.books !== undefined) {
+      if (!Array.isArray(record.books)) return { ok: false, error: "books must be an array." };
+      if (record.books.length > 500) return { ok: false, error: "Import is limited to 500 books." };
+      books = record.books.map(coerceBook).filter((book): book is Book => book != null);
+    }
+  }
+  return { ok: true, stories, books };
 }
 
 function optionalId(value: unknown): { ok: true; id?: string } | { ok: false; error: string } {
@@ -215,6 +241,10 @@ function parseFullStory(
   if (record.createdAt !== undefined && !isIso(record.createdAt)) {
     return { ok: false, error: "createdAt must be an ISO date string." };
   }
+  const chapter = readChapterAssignment(record);
+  if (!chapter.ok) return chapter;
+  const paragraphs = resolveParagraphs(fields.value.hanzi, sentences, record.paragraphs);
+  if (!paragraphs.ok) return paragraphs;
   const now = new Date().toISOString();
   const story: Story = {
     id: idCheck.id ?? newId(),
@@ -227,7 +257,137 @@ function parseFullStory(
     updatedAt: now,
   };
   if (record.bundled === true) story.bundled = true;
+  assignChapter(story, chapter.chapter);
+  if (paragraphs.paragraphs) story.paragraphs = paragraphs.paragraphs;
   return { ok: true, story };
+}
+
+export function readChapterAssignment(
+  record: Record<string, unknown>,
+): { ok: true; chapter: ChapterAssignment } | { ok: false; error: string } {
+  const hasBook = record.bookId !== undefined && record.bookId !== null && record.bookId !== "";
+  const hasNumber =
+    record.chapterNumber !== undefined && record.chapterNumber !== null && record.chapterNumber !== "";
+  const hasTitle =
+    record.chapterTitle !== undefined && record.chapterTitle !== null && record.chapterTitle !== "";
+  if (!hasBook && !hasNumber && !hasTitle) return { ok: true, chapter: {} };
+  if (!hasBook || !hasNumber) {
+    return { ok: false, error: "bookId and chapterNumber must be set together." };
+  }
+  if (typeof record.bookId !== "string" || !isStoryId(record.bookId)) {
+    return { ok: false, error: "bookId must match /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/." };
+  }
+  if (
+    typeof record.chapterNumber !== "number" ||
+    !Number.isInteger(record.chapterNumber) ||
+    record.chapterNumber < 1 ||
+    record.chapterNumber > 9999
+  ) {
+    return { ok: false, error: "chapterNumber must be an integer from 1 to 9999." };
+  }
+  if (hasTitle && typeof record.chapterTitle !== "string") {
+    return { ok: false, error: "chapterTitle must be a string." };
+  }
+  if (typeof record.chapterTitle === "string" && record.chapterTitle.trim().length > LIMITS.title) {
+    return { ok: false, error: `chapterTitle must be at most ${LIMITS.title} characters.` };
+  }
+  const chapter: ChapterAssignment = {
+    bookId: record.bookId,
+    chapterNumber: record.chapterNumber,
+  };
+  if (typeof record.chapterTitle === "string" && record.chapterTitle.trim()) {
+    chapter.chapterTitle = record.chapterTitle.trim();
+  }
+  return { ok: true, chapter };
+}
+
+function chapterFields(chapter: ChapterAssignment): ChapterAssignment {
+  const fields: ChapterAssignment = {};
+  if (chapter.bookId) fields.bookId = chapter.bookId;
+  if (chapter.chapterNumber != null) fields.chapterNumber = chapter.chapterNumber;
+  if (chapter.chapterTitle) fields.chapterTitle = chapter.chapterTitle;
+  return fields;
+}
+
+function assignChapter(story: Story, chapter: ChapterAssignment) {
+  if (!chapter.bookId || chapter.chapterNumber == null) return;
+  story.bookId = chapter.bookId;
+  story.chapterNumber = chapter.chapterNumber;
+  if (chapter.chapterTitle) story.chapterTitle = chapter.chapterTitle;
+}
+
+export function resolveParagraphs(
+  hanzi: string,
+  sentences: { id: string }[],
+  explicit: unknown,
+): { ok: true; paragraphs?: string[][] } | { ok: false; error: string } {
+  if (explicit === undefined) {
+    return { ok: true, paragraphs: paragraphGroupsForSentences(hanzi, sentences) };
+  }
+  if (!Array.isArray(explicit)) {
+    return { ok: false, error: "paragraphs must be an array of sentence-id groups." };
+  }
+  if (explicit.length > 200) return { ok: false, error: "paragraphs is too long." };
+  const known = new Set(sentences.map((sentence) => sentence.id));
+  const seen = new Set<string>();
+  const groups: string[][] = [];
+  for (const group of explicit) {
+    if (!Array.isArray(group) || group.length === 0) {
+      return { ok: false, error: "each paragraph must be a non-empty array of sentence ids." };
+    }
+    const row: string[] = [];
+    for (const id of group) {
+      if (typeof id !== "string" || !known.has(id) || seen.has(id)) {
+        return {
+          ok: false,
+          error: "paragraphs must list each sentence id on this story exactly once.",
+        };
+      }
+      seen.add(id);
+      row.push(id);
+    }
+    groups.push(row);
+  }
+  if (seen.size !== sentences.length) {
+    return { ok: false, error: "paragraphs must include every sentence id exactly once." };
+  }
+  if (groups.length <= 1) return { ok: true };
+  return { ok: true, paragraphs: groups };
+}
+
+function applyLenientChapter(story: Story, record: Record<string, unknown>) {
+  const chapter = readChapterAssignment(record);
+  if (chapter.ok) assignChapter(story, chapter.chapter);
+}
+
+function applyLenientParagraphs(story: Story, explicit: unknown) {
+  if (explicit === undefined) {
+    const derived = paragraphGroupsForSentences(story.hanzi, story.sentences);
+    if (derived) story.paragraphs = derived;
+    return;
+  }
+  const resolved = resolveParagraphs(story.hanzi, story.sentences, explicit);
+  if (resolved.ok && resolved.paragraphs) story.paragraphs = resolved.paragraphs;
+}
+
+function coerceBook(raw: unknown): Book | null {
+  const record = asRecord(raw);
+  if (!record || typeof record.id !== "string" || !isStoryId(record.id)) return null;
+  const now = new Date().toISOString();
+  const book: Book = {
+    id: record.id,
+    title:
+      typeof record.title === "string" && record.title.trim()
+        ? record.title.trim().slice(0, LIMITS.title)
+        : "Untitled",
+    level: isStoryLevel(record.level) ? record.level : "other",
+    createdAt: isIso(record.createdAt) ? record.createdAt : now,
+    updatedAt: isIso(record.updatedAt) ? record.updatedAt : now,
+  };
+  if (typeof record.description === "string" && record.description.trim()) {
+    book.description = record.description.trim().slice(0, 2_000);
+  }
+  return book;
 }
 
 function parseSentence(

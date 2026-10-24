@@ -5,25 +5,34 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { apiFetch } from "@/lib/api-fetch";
-import { getStory, saveStory } from "@/lib/storage";
+import { getStory, listBooks, saveStory } from "@/lib/storage";
 import {
   buildSentencesFromHanzi,
   looksLikePinyin,
   newId,
   onlyHanzi,
+  paragraphGroupsForSentences,
 } from "@/lib/text";
-import type { PrepareResponse, Story, StoryLevel } from "@/lib/types";
+import type { BookWithChapters, PrepareResponse, Story, StoryLevel } from "@/lib/types";
 
-export function NewStoryForm({ storyId }: { storyId?: string }) {
+export function NewStoryForm({ storyId, bookId: initialBookId }: { storyId?: string; bookId?: string }) {
   const router = useRouter();
   const [existing, setExisting] = useState<Story | null>(null);
   const [title, setTitle] = useState("");
   const [level, setLevel] = useState<StoryLevel>("HSK1");
   const [hanzi, setHanzi] = useState("");
   const [pinyin, setPinyin] = useState("");
+  const [books, setBooks] = useState<BookWithChapters[]>([]);
+  const [bookId, setBookId] = useState(initialBookId ?? "");
+  const [chapterNumber, setChapterNumber] = useState("");
+  const [chapterTitle, setChapterTitle] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const editing = Boolean(storyId);
+
+  useEffect(() => {
+    void listBooks().then(setBooks).catch(() => setBooks([]));
+  }, []);
 
   useEffect(() => {
     if (!storyId) return;
@@ -37,10 +46,37 @@ export function NewStoryForm({ storyId }: { storyId?: string }) {
       setLevel(found.level);
       setHanzi(found.hanzi);
       setPinyin(found.sentences.map((s) => s.pinyin).filter(Boolean).join("\n"));
+      setBookId(found.bookId ?? "");
+      setChapterNumber(found.chapterNumber ? String(found.chapterNumber) : "");
+      setChapterTitle(found.chapterTitle ?? "");
     }).catch((err) => {
       setError(err instanceof Error ? err.message : "Could not load story.");
     });
   }, [storyId]);
+
+  useEffect(() => {
+    if (storyId || !initialBookId || !books.length) return;
+    const book = books.find((item) => item.id === initialBookId);
+    if (!book) return;
+    setBookId(book.id);
+    setLevel(book.level);
+    const next = book.chapters.reduce((max, chapter) => Math.max(max, chapter.chapterNumber), 0) + 1;
+    setChapterNumber((current) => current || String(next));
+  }, [books, initialBookId, storyId]);
+
+  function readPlacement():
+    | { ok: true; chapter: { bookId?: string; chapterNumber?: number; chapterTitle?: string } }
+    | { ok: false; error: string } {
+    if (!bookId) return { ok: true, chapter: {} };
+    const n = Number(chapterNumber);
+    if (!Number.isInteger(n) || n < 1 || n > 9999) {
+      return { ok: false, error: "Chapter number must be a whole number from 1 to 9999." };
+    }
+    return {
+      ok: true,
+      chapter: { bookId, chapterNumber: n, chapterTitle: chapterTitle.trim() || undefined },
+    };
+  }
 
   async function prepareAndSave() {
     setError("");
@@ -48,6 +84,11 @@ export function NewStoryForm({ storyId }: { storyId?: string }) {
     const pinyinText = pinyin.trim();
     if (!hanziText && !pinyinText) {
       setError("Paste simplified Chinese, pinyin, or both.");
+      return;
+    }
+    const placement = readPlacement();
+    if (!placement.ok) {
+      setError(placement.error);
       return;
     }
     setBusy(true);
@@ -67,13 +108,13 @@ export function NewStoryForm({ storyId }: { storyId?: string }) {
         throw new Error(body.error || `Prepare failed (${response.status})`);
       }
       const prepared = (await response.json()) as PrepareResponse;
-      const story = toStory(prepared, existing);
+      const story = placeStory(toStory(prepared, existing), placement.chapter);
       await saveStory(story);
       router.push(`/read/${story.id}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not prepare story.";
       if (hanziText && onlyHanzi(hanziText) && !looksLikePinyin(hanziText)) {
-        const local = localStory(title, level, hanziText, existing);
+        const local = placeStory(localStory(title, level, hanziText, existing), placement.chapter);
         await saveStory(local);
         router.push(`/read/${local.id}`);
         return;
@@ -91,9 +132,14 @@ export function NewStoryForm({ storyId }: { storyId?: string }) {
       setError("Local save needs simplified Chinese text.");
       return;
     }
+    const placement = readPlacement();
+    if (!placement.ok) {
+      setError(placement.error);
+      return;
+    }
     setBusy(true);
     try {
-      const story = localStory(title, level, hanziText, existing);
+      const story = placeStory(localStory(title, level, hanziText, existing), placement.chapter);
       const segmented = await apiFetch("/api/segment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -108,6 +154,9 @@ export function NewStoryForm({ storyId }: { storyId?: string }) {
       }
       story.sentences = body.sentences;
       story.notes = existing?.notes ?? {};
+      const paragraphs = paragraphGroupsForSentences(hanziText, story.sentences);
+      if (paragraphs) story.paragraphs = paragraphs;
+      else delete story.paragraphs;
       await saveStory(story);
       router.push(`/read/${story.id}`);
     } catch (err) {
@@ -191,6 +240,63 @@ export function NewStoryForm({ storyId }: { storyId?: string }) {
             </label>
           </div>
 
+          <div className="grid gap-4 sm:grid-cols-[1fr_8rem]">
+            <label className="block">
+              <span className="font-[family-name:var(--font-sans)] text-xs uppercase tracking-[0.16em] text-ink-soft">
+                Book
+              </span>
+              <select
+                value={bookId}
+                onChange={(e) => {
+                  const nextId = e.target.value;
+                  setBookId(nextId);
+                  if (!nextId) return;
+                  const book = books.find((item) => item.id === nextId);
+                  if (!book) return;
+                  if (!editing) setLevel(book.level);
+                  if (!chapterNumber) {
+                    const next =
+                      book.chapters.reduce((max, chapter) => Math.max(max, chapter.chapterNumber), 0) + 1;
+                    setChapterNumber(String(next));
+                  }
+                }}
+                className="mt-1 w-full rounded-lg border border-[color-mix(in_oklab,var(--color-ink)_14%,transparent)] bg-white/50 px-3 py-2"
+              >
+                <option value="">Standalone story</option>
+                {books.map((book) => (
+                  <option key={book.id} value={book.id}>
+                    {book.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {bookId ? (
+              <label className="block">
+                <span className="font-[family-name:var(--font-sans)] text-xs uppercase tracking-[0.16em] text-ink-soft">
+                  Chapter
+                </span>
+                <input
+                  value={chapterNumber}
+                  onChange={(e) => setChapterNumber(e.target.value)}
+                  inputMode="numeric"
+                  className="mt-1 w-full rounded-lg border border-[color-mix(in_oklab,var(--color-ink)_14%,transparent)] bg-white/50 px-3 py-2"
+                />
+              </label>
+            ) : null}
+          </div>
+          {bookId ? (
+            <label className="block">
+              <span className="font-[family-name:var(--font-sans)] text-xs uppercase tracking-[0.16em] text-ink-soft">
+                Chapter title (optional)
+              </span>
+              <input
+                value={chapterTitle}
+                onChange={(e) => setChapterTitle(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-[color-mix(in_oklab,var(--color-ink)_14%,transparent)] bg-white/50 px-3 py-2"
+              />
+            </label>
+          ) : null}
+
           <label className="block">
             <span className="font-[family-name:var(--font-sans)] text-xs uppercase tracking-[0.16em] text-ink-soft">
               Simplified Chinese
@@ -253,7 +359,9 @@ export function NewStoryForm({ storyId }: { storyId?: string }) {
 
 function toStory(prepared: PrepareResponse, existing: Story | null): Story {
   const now = new Date().toISOString();
-  return {
+  const paragraphs =
+    prepared.paragraphs ?? paragraphGroupsForSentences(prepared.hanzi, prepared.sentences);
+  const story: Story = {
     id: existing?.id ?? newId(),
     title: prepared.title,
     level: prepared.level,
@@ -264,6 +372,24 @@ function toStory(prepared: PrepareResponse, existing: Story | null): Story {
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
+  if (paragraphs && paragraphs.length > 1) story.paragraphs = paragraphs;
+  return story;
+}
+
+function placeStory(
+  story: Story,
+  chapter: { bookId?: string; chapterNumber?: number; chapterTitle?: string },
+): Story {
+  const next: Story = { ...story };
+  delete next.bookId;
+  delete next.chapterNumber;
+  delete next.chapterTitle;
+  if (chapter.bookId && chapter.chapterNumber) {
+    next.bookId = chapter.bookId;
+    next.chapterNumber = chapter.chapterNumber;
+    if (chapter.chapterTitle) next.chapterTitle = chapter.chapterTitle;
+  }
+  return next;
 }
 
 function localStory(
@@ -273,15 +399,19 @@ function localStory(
   existing: Story | null,
 ): Story {
   const now = new Date().toISOString();
-  return {
+  const sentences = buildSentencesFromHanzi(hanzi);
+  const paragraphs = paragraphGroupsForSentences(hanzi, sentences);
+  const story: Story = {
     id: existing?.id ?? newId(),
     title: title.trim() || existing?.title || "Untitled",
     level,
     bundled: existing?.bundled,
     hanzi,
-    sentences: buildSentencesFromHanzi(hanzi),
+    sentences,
     notes: existing?.notes ?? {},
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
+  if (paragraphs) story.paragraphs = paragraphs;
+  return story;
 }

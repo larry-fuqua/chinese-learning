@@ -10,7 +10,7 @@ import {
   referenceSyllables,
   syllableTimesFromChars,
 } from "@/lib/pitch";
-import { getStory, saveStory, upsertNote } from "@/lib/storage";
+import { getBook, getStory, saveStory, upsertNote } from "@/lib/storage";
 import { compareHanzi, glueOrphanPunct, isHan } from "@/lib/text";
 import type {
   Note,
@@ -54,6 +54,11 @@ export function Reader({ storyId }: { storyId: string }) {
   const [matches, setMatches] = useState<("ok" | "miss" | "sub" | "extra")[] | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Note | null>(null);
+  const [chapterNav, setChapterNav] = useState<{
+    bookTitle?: string;
+    previous?: { id: string; label: string };
+    next?: { id: string; label: string };
+  }>({});
   const abortRef = useRef<AbortController | null>(null);
   const recorderRef = useRef<Recorder | null>(null);
   const pitchCache = useRef<Map<string, PitchPoint[]>>(new Map());
@@ -65,6 +70,33 @@ export function Reader({ storyId }: { storyId: string }) {
       })
       .catch(() => setMissing(true));
   }, [storyId]);
+  useEffect(() => {
+    if (!story?.bookId) {
+      setChapterNav({});
+      return;
+    }
+    const bookId = story.bookId;
+    const storyIdInBook = story.id;
+    void getBook(bookId)
+      .then((book) => {
+        if (!book) {
+          setChapterNav({});
+          return;
+        }
+        const index = book.chapters.findIndex((chapter) => chapter.id === storyIdInBook);
+        const labelOf = (chapter: (typeof book.chapters)[number]) =>
+          `${chapter.chapterNumber}. ${chapter.chapterTitle || chapter.title}`;
+        setChapterNav({
+          bookTitle: book.title,
+          previous: index > 0 ? { id: book.chapters[index - 1]!.id, label: labelOf(book.chapters[index - 1]!) } : undefined,
+          next:
+            index >= 0 && index < book.chapters.length - 1
+              ? { id: book.chapters[index + 1]!.id, label: labelOf(book.chapters[index + 1]!) }
+              : undefined,
+        });
+      })
+      .catch(() => setChapterNav({}));
+  }, [story]);
   const sentence = story?.sentences[active];
   const note = selectedWord && story ? story.notes[selectedWord] : undefined;
   const cyclePinyin = useCallback(() => {
@@ -414,6 +446,9 @@ export function Reader({ storyId }: { storyId: string }) {
       regroupWords={regroupWords}
       prepareNotes={prepareNotes}
       saveNote={saveNote}
+      bookTitle={chapterNav.bookTitle}
+      previousChapter={chapterNav.previous}
+      nextChapter={chapterNav.next}
     />
   );
 }

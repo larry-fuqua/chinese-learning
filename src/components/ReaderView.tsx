@@ -4,6 +4,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { PitchGraph } from "@/components/PitchGraph";
 import { SentenceLine, emptyNote } from "@/components/ReaderHelpers";
 import { ReaderNotes } from "@/components/ReaderNotes";
+import { sentenceGroups } from "@/lib/text";
 import type { Note, PinyinMode, Story, ToneGraph, Word } from "@/lib/types";
 export type ReaderViewProps = {
   story: Story;
@@ -38,6 +39,9 @@ export type ReaderViewProps = {
   regroupWords: () => Promise<void>;
   prepareNotes: () => Promise<void>;
   saveNote: () => Promise<void>;
+  bookTitle?: string;
+  previousChapter?: { id: string; label: string };
+  nextChapter?: { id: string; label: string };
 };
 export function ReaderView(p: ReaderViewProps) {
   const {
@@ -47,7 +51,9 @@ export function ReaderView(p: ReaderViewProps) {
     setActive, setSelectedWord, setDraft, setEditing, setSpeed, setGraphSyllable,
     stopPlayback, playSentence, playStory, toggleRecord, cyclePinyin,
     regroupWords, prepareNotes, saveNote,
+    bookTitle, previousChapter, nextChapter,
   } = p;
+  const groups = sentenceGroups(story.sentences, story.paragraphs);
   return (
     <div className="reader-shell flex h-dvh flex-col overflow-hidden">
       <AppHeader
@@ -138,45 +144,72 @@ export function ReaderView(p: ReaderViewProps) {
             ) : null}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-6">
-            <div className="space-y-1">
-              {story.sentences.map((s, index) => (
-                <button
-                  key={s.id}
-                  id={`sentence-${index}`}
-                  type="button"
-                  onClick={() => setActive(index)}
-                  className={`sentence-row w-full rounded-r-xl px-3 py-3 text-left ${
-                    index === active ? "active" : ""
-                  }`}
-                >
-                  <SentenceLine
-                    sentence={s}
-                    active={index === active}
-                    pinyinMode={pinyinMode}
-                    selectedWord={index === active ? selectedWord : null}
-                    spokenChar={index === active ? spokenChar : null}
-                    matchByExpected={index === active ? matchByExpected : undefined}
-                    notes={story.notes}
-                    onWord={(word) => {
-                      setActive(index);
-                      setSelectedWord(word.hanzi);
-                      setDraft(
-                        story.notes[word.hanzi] ??
-                          (word.note
-                            ? {
-                                pinyin: word.pinyin,
-                                gloss: word.note.split(/[.;：:]/)[0]?.trim() || word.note,
-                                usage: word.note,
-                                source: "ai",
-                              }
-                            : emptyNote(word)),
-                      );
-                      setEditing(false);
-                    }}
-                  />
-                </button>
+            {bookTitle ? (
+              <p className="mb-3 font-[family-name:var(--font-sans)] text-xs uppercase tracking-[0.16em] text-ink-soft">
+                {bookTitle}
+              </p>
+            ) : null}
+            <div className={groups.length > 1 ? "space-y-8" : "space-y-1"}>
+              {groups.map((group, groupIndex) => (
+                <div key={groupIndex} className="space-y-1">
+                  {group.map(({ sentence: s, index }) => (
+                    <button
+                      key={s.id}
+                      id={`sentence-${index}`}
+                      type="button"
+                      onClick={() => setActive(index)}
+                      className={`sentence-row w-full rounded-r-xl px-3 py-3 text-left ${
+                        index === active ? "active" : ""
+                      }`}
+                    >
+                      <SentenceLine
+                        sentence={s}
+                        active={index === active}
+                        pinyinMode={pinyinMode}
+                        selectedWord={index === active ? selectedWord : null}
+                        spokenChar={index === active ? spokenChar : null}
+                        matchByExpected={index === active ? matchByExpected : undefined}
+                        notes={story.notes}
+                        onWord={(word) => {
+                          setActive(index);
+                          setSelectedWord(word.hanzi);
+                          setDraft(
+                            story.notes[word.hanzi] ??
+                              (word.note
+                                ? {
+                                    pinyin: word.pinyin,
+                                    gloss: word.note.split(/[.;：:]/)[0]?.trim() || word.note,
+                                    usage: word.note,
+                                    source: "ai",
+                                  }
+                                : emptyNote(word)),
+                          );
+                          setEditing(false);
+                        }}
+                      />
+                    </button>
+                  ))}
+                </div>
               ))}
             </div>
+            {previousChapter || nextChapter ? (
+              <div className="mt-8 flex items-center justify-between gap-3 font-[family-name:var(--font-sans)] text-sm">
+                {previousChapter ? (
+                  <Link href={`/read/${previousChapter.id}`} className="text-cinnabar">
+                    Previous: {previousChapter.label}
+                  </Link>
+                ) : (
+                  <span />
+                )}
+                {nextChapter ? (
+                  <Link href={`/read/${nextChapter.id}`} className="text-cinnabar">
+                    Next: {nextChapter.label}
+                  </Link>
+                ) : (
+                  <span />
+                )}
+              </div>
+            ) : null}
             <p className="mt-4 pb-2 font-[family-name:var(--font-sans)] text-xs text-ink-soft">
               <kbd>Space</kbd> hear · <kbd>R</kbd> recite · <kbd>P</kbd> pinyin ·{" "}
               <kbd>↑</kbd>
