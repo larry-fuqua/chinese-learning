@@ -10,7 +10,8 @@ import type {
   Word,
 } from "@/lib/types";
 import type { CharSpan } from "@/lib/align-audio";
-import { normalizeTimestampUnit, sliceWindows } from "@/lib/align-audio";
+import { applyOwnership, normalizeTimestampUnit, sliceWindows } from "@/lib/align-audio";
+import { displayPinyin } from "@/lib/pinyin";
 import { isHan } from "@/lib/text";
 import { decodeToMono } from "@/lib/wav";
 import { buildSyllablePitches, extractPitch } from "@/lib/pitch";
@@ -46,6 +47,7 @@ export function SentenceLine({
         const hanCount = chars.filter(isHan).length;
         hanOffset += hanCount;
         const hint = word.note || notes[word.hanzi]?.usage || notes[word.hanzi]?.gloss;
+        const ruby = displayPinyin(word.hanzi, word.pinyin);
         return (
           <span
             key={`${sentence.id}-${wi}`}
@@ -59,7 +61,7 @@ export function SentenceLine({
               onWord(word);
             }}
           >
-            {showRuby && word.pinyin ? <rt>{word.pinyin}</rt> : <rt>&nbsp;</rt>}
+            {showRuby && ruby ? <rt>{ruby}</rt> : <rt>&nbsp;</rt>}
             <span>
               {chars.map((ch, ci) => {
                 const hanBefore =
@@ -147,10 +149,14 @@ export async function decodeReference(
   const duration = tts.duration || decoded.samples.length / decoded.sampleRate;
   const normalized = normalizeTimestampUnit(tts.charTimes, duration);
   tts.charTimes = normalized.times;
-  const windows = sliceWindows(
-    sentence.hanzi,
-    tts.graphChars,
-    tts.charTimes,
+  const windows = applyOwnership(
+    sliceWindows(
+      sentence.hanzi,
+      tts.graphChars,
+      tts.charTimes,
+      decoded.samples,
+      decoded.sampleRate,
+    ),
     decoded.samples,
     decoded.sampleRate,
   );

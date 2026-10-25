@@ -308,12 +308,23 @@ The library asks for confirmation and says that chapters remain as separate stor
 
 ## TTS cache
 
-Character timings are not stored on the story. Hear reads xAI `graph_chars` and `graph_times` (seconds, one pair per input character) from `DATA_DIR/audio/<hash>.json`, or calls xAI and writes that file. The pitch graph compares a contour to the spoken tone after tone sandhi and neutral tone. Playback slices keep the token start, minus 30 ms, and extend the end to the energy dip before the next character, or through the pause before punctuation. A story file does not need to be rewritten for that.
+Character timings are not stored on the story. Hear reads xAI `graph_chars` and `graph_times` (seconds, one pair per input character) from `DATA_DIR/audio/<hash>.json`, or calls xAI and writes that file. The pitch graph compares a contour to the spoken tone after tone sandhi and neutral tone, using only the longest voiced stretch so a pause is not drawn as a slope. Playback slices keep the token start, minus 30 ms, and extend the end to the energy dip before the next character, or through the pause before punctuation. A pause that still falls inside a slice is handed to the neighbouring character. Recordings go through the same slicer. A run of digits in the transcript is turned into Chinese numerals before the characters are matched, and a multi-character transcript piece stays an even split of that word's span. Per-character pinyin is computed from the stored word pinyin, so story JSON is not rewritten for the syllable split. A story file does not need to be rewritten for the slices either.
 
 `DELETE /api/tts/cache` removes only the audio JSON files. The next Hear fetches timestamps again. Stories and books stay in place. Same auth as the other routes.
 
 ```json
 { "deleted": 3 }
+```
+
+## Last recite take
+
+`PUT /api/stories/:id/takes/:sentenceId` stores the latest recording for that sentence. The body is multipart form data: `file` is the wav, and `stt` is JSON `{ "text", "duration", "words": [{ "text", "start", "end" }] }`. A second put replaces the file. Only one take is kept per sentence, under `DATA_DIR/takes/<storyId>/<sentenceId>.json`. Nothing is written to the browser.
+
+`GET` returns that JSON, including `audioBase64`. `404` if the story, the sentence, or the take is missing. Deleting the story deletes its takes. Same auth as the other routes.
+
+```bash
+curl -fsS "$BASE/api/stories/sample-xiaoming/takes/s1" \
+  -H "Authorization: Bearer $READER_API_KEY"
 ```
 
 ## Migration

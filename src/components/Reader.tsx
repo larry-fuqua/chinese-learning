@@ -3,13 +3,11 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api-fetch";
 import { playBuffer, playSlice, startRecorder, type Recorder } from "@/lib/audio";
-import {
-  alignUserSyllableTimes,
-  buildSyllablePitches,
-  extractPitch,
-} from "@/lib/pitch";
+import { buildSyllablePitches, buildTakeGraph } from "@/lib/pitch";
+import { decodeToMono } from "@/lib/wav";
 import { getBook, getStory, saveStory, upsertNote } from "@/lib/storage";
 import { compareHanzi, glueOrphanPunct, isHan } from "@/lib/text";
+import type { CharSpan } from "@/lib/align-audio";
 import type {
   Note,
   PinyinMode,
@@ -25,7 +23,6 @@ import {
   emptyNote,
   mergeSentences,
   base64ToBuffer,
-  loadReferenceGraph,
   decodeReference,
 } from "@/components/ReaderHelpers";
 import { ReaderView } from "@/components/ReaderView";
@@ -64,6 +61,73 @@ export function Reader({ storyId }: { storyId: string }) {
   const playGen = useRef(0);
   const modelAudioRef = useRef<ArrayBuffer | null>(null);
   const userAudioRef = useRef<{ samples: Float32Array; sampleRate: number } | null>(null);
+  const storyRef = useRef<Story | null>(null);
+  const sentenceRef = useRef<Sentence | undefined>(undefined);
+  type ModelSlice = {
+    sentenceId: string;
+    audio: ArrayBuffer;
+    refPitch: PitchPoint[];
+    windows: CharSpan[];
+    duration: number;
+  };
+  type TakeSlice = {
+    sentenceId: string;
+    samples: Float32Array;
+    sampleRate: number;
+    text: string;
+    words: { text: string; start: number; end: number }[];
+    duration: number;
+  };
+  const modelSliceRef = useRef<ModelSlice | null>(null);
+  const takeSliceRef = useRef<TakeSlice | null>(null);
+  const publishRef = useRef<() => void>(() => {});
+  publishRef.current = () => {
+    const current = sentenceRef.current;
+    if (!current) return;
+    const model = modelSliceRef.current?.sentenceId === current.id ? modelSliceRef.current : null;
+    const take = takeSliceRef.current?.sentenceId === current.id ? takeSliceRef.current : null;
+    if (model) modelAudioRef.current = model.audio;
+    if (take) {
+      userAudioRef.current = { samples: take.samples, sampleRate: take.sampleRate };
+      setHasUserAudio(true);
+      setMatches(compareHanzi(current.hanzi, take.text).matches);
+      setGraph(
+        buildTakeGraph({
+          words: current.words,
+          hanzi: current.hanzi,
+          samples: take.samples,
+          sampleRate: take.sampleRate,
+          heard: take.text,
+          heardChars: compareHanzi(current.hanzi, take.text).heardChars,
+          sttWords: take.words,
+          duration: take.duration,
+          refPitch: model?.refPitch,
+          refTimes: model?.windows,
+          refDuration: model?.duration,
+        }),
+      );
+      return;
+    }
+    userAudioRef.current = null;
+    setHasUserAudio(false);
+    if (!model) {
+      setGraph(null);
+      return;
+    }
+    setGraph({
+      syllables: buildSyllablePitches({
+        words: current.words,
+        refTimes: model.windows,
+        userTimes: [],
+        refPitch: model.refPitch,
+        userPitch: [],
+      }),
+      refPitch: model.refPitch,
+      userPitch: [],
+      duration: model.duration,
+      heard: "",
+    });
+  };
   useEffect(() => {
     void getStory(storyId)
       .then((found) => {
@@ -100,6 +164,8 @@ export function Reader({ storyId }: { storyId: string }) {
       .catch(() => setChapterNav({}));
   }, [story]);
   const sentence = story?.sentences[active];
+  storyRef.current = story;
+  sentenceRef.current = sentence;
   const note = selectedWord && story ? story.notes[selectedWord] : undefined;
   const cyclePinyin = useCallback(() => {
     setPinyinMode((mode) => {
@@ -170,13 +236,18 @@ export function Reader({ storyId }: { storyId: string }) {
       try {
         const tts = await ensureTts(s);
         if (playGen.current !== gen) return;
-        const refGraph = await loadReferenceGraph(s, tts, story.id, speed, pitchCache.current);
+        const decoded = await decodeReference(s, tts, story.id, speed, pitchCache.current);
         if (playGen.current !== gen) return;
+        modelSliceRef.current = {
+          sentenceId: s.id,
+          audio: tts.audio,
+          refPitch: decoded.refPitch,
+          windows: decoded.windows,
+          duration: decoded.duration,
+        };
         modelAudioRef.current = tts.audio;
-        userAudioRef.current = null;
-        setHasUserAudio(false);
         setReplayTrack("model");
-        setGraph(refGraph);
+        publishRef.current();
         setGraphSyllable(0);
         setPlayheadT(0);
         const controller = new AbortController();
@@ -189,8 +260,8 @@ export function Reader({ storyId }: { storyId: string }) {
             if (playGen.current !== gen) return;
             setPlayheadT(t);
             let spoken: number | null = null;
-            refGraph.syllables.forEach((syllable, i) => {
-              if (syllable.end > syllable.start && t >= syllable.start && t < syllable.end) {
+            decoded.windows.forEach((window, i) => {
+              if (window.end > window.start && t >= window.start && t < window.end) {
                 spoken = i;
               }
             });
@@ -293,7 +364,6 @@ export function Reader({ storyId }: { storyId: string }) {
           duration?: number;
         };
         if (!response.ok) throw new Error(body.error || "Could not hear that.");
-        const compared = compareHanzi(sentence.hanzi, body.text ?? "");
         const { refPitch, duration, windows } = await decodeReference(
           sentence,
           tts,
@@ -301,39 +371,43 @@ export function Reader({ storyId }: { storyId: string }) {
           speed,
           pitchCache.current,
         );
-        const userPitch = extractPitch(take.samples, take.sampleRate);
-        const userDuration =
-          body.duration ?? take.samples.length / take.sampleRate;
-        const userTimes = alignUserSyllableTimes({
-          expectedChars: compared.expectedChars,
-          expectedText: sentence.hanzi,
-          heardChars: compared.heardChars,
-          sttWords: body.words ?? [],
-          userPitch,
-          userDuration,
-          ttsDuration: duration,
+        const userDuration = body.duration ?? take.samples.length / take.sampleRate;
+        modelSliceRef.current = {
+          sentenceId: sentence.id,
+          audio: tts.audio,
+          refPitch,
+          windows,
+          duration,
+        };
+        takeSliceRef.current = {
+          sentenceId: sentence.id,
           samples: take.samples,
           sampleRate: take.sampleRate,
-        });
-        const syllables = buildSyllablePitches({
-          words: sentence.words,
-          refTimes: windows,
-          userTimes,
-          refPitch,
-          userPitch,
-        });
-        setGraph({
-          syllables,
-          refPitch,
-          userPitch,
-          duration: Math.max(duration, userDuration),
-          heard: body.text ?? "",
-        });
-        modelAudioRef.current = tts.audio;
-        userAudioRef.current = { samples: take.samples, sampleRate: take.sampleRate };
-        setHasUserAudio(true);
-        setMatches(compared.matches);
+          text: body.text ?? "",
+          words: body.words ?? [],
+          duration: userDuration,
+        };
+        publishRef.current();
         setGraphSyllable(0);
+        const save = new FormData();
+        save.append("file", take.wav, "recite.wav");
+        save.append(
+          "stt",
+          JSON.stringify({
+            text: body.text ?? "",
+            duration: userDuration,
+            sampleRate: take.sampleRate,
+            words: body.words ?? [],
+          }),
+        );
+        const saved = await apiFetch(
+          `/api/stories/${story.id}/takes/${encodeURIComponent(sentence.id)}`,
+          { method: "PUT", body: save },
+        );
+        if (!saved.ok) {
+          const errBody = (await saved.json()) as { error?: string };
+          throw new Error(errBody.error || "Could not save this take.");
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Recite failed.");
       } finally {
@@ -458,6 +532,47 @@ export function Reader({ storyId }: { storyId: string }) {
       block: "nearest",
     });
   }, [active]);
+  useEffect(() => {
+    const currentStory = storyRef.current;
+    const current = sentenceRef.current;
+    if (!currentStory || !current) return;
+    const storyId = currentStory.id;
+    const sentenceId = current.id;
+    if (modelSliceRef.current?.sentenceId !== sentenceId) modelSliceRef.current = null;
+    if (takeSliceRef.current?.sentenceId !== sentenceId) takeSliceRef.current = null;
+    publishRef.current();
+    let cancelled = false;
+    void (async () => {
+      const response = await apiFetch(
+        `/api/stories/${storyId}/takes/${encodeURIComponent(sentenceId)}`,
+      );
+      if (cancelled || sentenceRef.current?.id !== sentenceId) return;
+      if (!response.ok) return;
+      const body = (await response.json()) as {
+        audioBase64?: string;
+        text?: string;
+        words?: { text: string; start: number; end: number }[];
+        duration?: number;
+      };
+      if (!body.audioBase64) return;
+      const decoded = await decodeToMono(base64ToBuffer(body.audioBase64));
+      if (cancelled || sentenceRef.current?.id !== sentenceId) return;
+      takeSliceRef.current = {
+        sentenceId,
+        samples: decoded.samples,
+        sampleRate: decoded.sampleRate,
+        text: body.text ?? "",
+        words: body.words ?? [],
+        duration: body.duration ?? decoded.samples.length / decoded.sampleRate,
+      };
+      publishRef.current();
+    })().catch(() => {
+      if (!cancelled) setError("Could not load the saved take.");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [story?.id, sentence?.id]);
   const matchByExpected = useMemo(() => {
     if (!matches) return new Map<number, "ok" | "miss" | "sub">();
     const map = new Map<number, "ok" | "miss" | "sub">();

@@ -287,13 +287,180 @@ export function sliceWindows(
   });
 }
 
-export function timedCharsFromWords(
+/**
+ * Fixed ownership constants. A pause inside a window is silence of at least
+ * GAP_MIN. The character keeps its loudest stretch. Speech on the other side
+ * of that pause belongs to the neighbour. Nothing here is chosen per sentence.
+ */
+export const OWNERSHIP = {
+  GAP_MIN_SEC: 0.1,
+  SPEECH_K: 0.05,
+  NOISE_MULT: 2.5,
+  MIN_SEG_SEC: 0.03,
+  EDGE_LEAD_SEC: 0.07,
+  EDGE_TAIL_SEC: 0.06,
+} as const;
+
+const DIGITS_ZH = "零一二三四五六七八九";
+
+function percentile(sorted: number[], q: number): number {
+  return sorted[Math.floor(q * (sorted.length - 1))] ?? 0;
+}
+
+function speechRuns(
+  frames: { t: number; rms: number }[],
+  threshold: number,
+  lo: number,
+  hi: number,
+): [number, number][] {
+  const raw: [number, number][] = [];
+  let cur: [number, number] | null = null;
+  for (const frame of frames) {
+    if (frame.t < lo || frame.t > hi) continue;
+    if (frame.rms >= threshold) {
+      if (cur) cur[1] = frame.t;
+      else cur = [frame.t, frame.t];
+    } else if (cur) {
+      raw.push(cur);
+      cur = null;
+    }
+  }
+  if (cur) raw.push(cur);
+  const merged: [number, number][] = [];
+  for (const run of raw) {
+    const last = merged[merged.length - 1];
+    if (last && run[0] - last[1] < OWNERSHIP.GAP_MIN_SEC) last[1] = run[1];
+    else merged.push([run[0], run[1]]);
+  }
+  return merged.filter((run) => run[1] - run[0] >= OWNERSHIP.MIN_SEG_SEC);
+}
+
+/**
+ * Trim each slice to its main voiced stretch and hand a part past a pause
+ * to the neighbouring character. Applied after sliceWindows on both paths.
+ * The xAI token start for 一 in 一年级 is left as the slicer produced it.
+ */
+export function applyOwnership(
+  windows: CharSpan[],
+  samples: Float32Array,
+  sampleRate: number,
+): CharSpan[] {
+  const frames = frameRms(samples, sampleRate).map((frame) => ({
+    t: frame.t + 0.01,
+    rms: frame.rms,
+  }));
+  if (!frames.length) return windows;
+  const sorted = frames.map((frame) => frame.rms).sort((a, b) => a - b);
+  const threshold = Math.max(
+    OWNERSHIP.SPEECH_K * percentile(sorted, 0.99),
+    OWNERSHIP.NOISE_MULT * percentile(sorted, 0.1),
+  );
+  const duration = sampleRate > 0 ? samples.length / sampleRate : 0;
+  const out = windows.map((window) => ({ ...window }));
+  const giveLo = new Map<number, number>();
+  const giveHi = new Map<number, number>();
+  const valid = (index: number) => windows[index].end > windows[index].start;
+  windows.forEach((window, index) => {
+    if (!valid(index)) return;
+    const segments = speechRuns(frames, threshold, window.start, window.end);
+    if (!segments.length) return;
+    const energy = segments.map(([a, b]) =>
+      frames.reduce((sum, frame) => (frame.t >= a && frame.t <= b ? sum + frame.rms : sum), 0),
+    );
+    const loudest = energy.indexOf(Math.max(...energy));
+    const [a, b] = segments[loudest];
+    if (loudest > 0 || a - window.start > OWNERSHIP.GAP_MIN_SEC + OWNERSHIP.EDGE_LEAD_SEC) {
+      out[index].start = Math.max(window.start, a - OWNERSHIP.EDGE_LEAD_SEC);
+    }
+    if (
+      loudest < segments.length - 1 ||
+      window.end - b > OWNERSHIP.GAP_MIN_SEC + OWNERSHIP.EDGE_TAIL_SEC
+    ) {
+      out[index].end = Math.min(window.end, b + OWNERSHIP.EDGE_TAIL_SEC);
+    }
+    if (loudest < segments.length - 1) {
+      let next = index + 1;
+      while (next < windows.length && !valid(next)) next++;
+      if (next < windows.length) {
+        const start = Math.max(0, segments[loudest + 1][0] - OWNERSHIP.EDGE_LEAD_SEC);
+        giveLo.set(next, Math.min(giveLo.get(next) ?? Infinity, start));
+      }
+    }
+    if (loudest > 0) {
+      let prev = index - 1;
+      while (prev >= 0 && !valid(prev)) prev--;
+      if (prev >= 0) {
+        const end = Math.min(duration, segments[loudest - 1][1] + OWNERSHIP.EDGE_TAIL_SEC);
+        giveHi.set(prev, Math.max(giveHi.get(prev) ?? -1, end));
+      }
+    }
+  });
+  giveLo.forEach((start, index) => {
+    out[index].start = Math.min(out[index].start, start);
+  });
+  giveHi.forEach((end, index) => {
+    out[index].end = Math.max(out[index].end, end);
+  });
+  return out.map((window) => ({
+    ...window,
+    end: window.end > window.start ? window.end : window.start,
+  }));
+}
+
+/** Arabic digits to Chinese candidates. Cardinal first when it is well formed, then digit by digit. */
+export function numToZh(digits: string): string[] {
+  const seq = [...digits].map((digit) => DIGITS_ZH[+digit] ?? "").join("");
+  let card: string | null = null;
+  if (digits.length <= 4 && !(digits.length > 1 && digits[0] === "0")) {
+    const units = ["", "十", "百", "千"];
+    const values = [...digits].map(Number);
+    let out = "";
+    let zero = false;
+    values.forEach((value, i) => {
+      const place = values.length - 1 - i;
+      if (value === 0) {
+        zero = true;
+        return;
+      }
+      if (zero && out) out += "零";
+      zero = false;
+      out += (value === 1 && place === 1 && i === 0 ? "" : DIGITS_ZH[value]) + units[place];
+    });
+    card = out || "零";
+  }
+  return [...new Set([card, seq].filter((item): item is string => Boolean(item)))];
+}
+
+/**
+ * STT words to character tokens. Digit runs become Chinese numerals before matching.
+ * A multi-character piece stays evenly split across that word's span.
+ */
+export function timedCharsFromWords2(
   words: { text: string; start: number; end: number }[],
+  expectedText: string,
+  toneless: (ch: string) => string | undefined,
 ): { graphChars: string[]; charTimes: [number, number][] } {
+  const hanExpected = [...expectedText].filter((ch) => ch >= "\u3400" && ch <= "\u9fff").join("");
+  const expectedReadings = new Set(
+    [...expectedText].map((ch) => toneless(ch)).filter((reading): reading is string => Boolean(reading)),
+  );
   const graphChars: string[] = [];
   const charTimes: [number, number][] = [];
   for (const word of words) {
-    const chars = [...word.text];
+    const chars: string[] = [];
+    for (const part of word.text.match(/\d+|\D/gu) ?? []) {
+      if (/^\d+$/.test(part)) {
+        const options = numToZh(part);
+        if (!options.length) continue;
+        const score = (option: string) =>
+          (hanExpected.includes(option) ? 1000 : 0) +
+          [...option].filter((ch) => expectedReadings.has(toneless(ch) ?? "")).length;
+        const chosen = options.reduce((best, next) => (score(next) > score(best) ? next : best));
+        chars.push(...[...chosen]);
+      } else {
+        chars.push(part);
+      }
+    }
     if (!chars.length) continue;
     const span = Math.max(0, word.end - word.start);
     chars.forEach((ch, i) => {
@@ -305,6 +472,13 @@ export function timedCharsFromWords(
     });
   }
   return { graphChars, charTimes };
+}
+
+export function timedCharsFromWords(
+  words: { text: string; start: number; end: number }[],
+  expectedText = "",
+): { graphChars: string[]; charTimes: [number, number][] } {
+  return timedCharsFromWords2(words, expectedText, tonelessReading);
 }
 
 export type OffCase = {

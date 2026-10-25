@@ -1,5 +1,5 @@
-import type { PitchPoint, SyllablePitch, Word } from "./types";
-import { sliceWindows, syllableTimesFromChars, timedCharsFromWords } from "./align-audio";
+import type { PitchPoint, SyllablePitch, ToneGraph, Word } from "./types";
+import { applyOwnership, sliceWindows, syllableTimesFromChars, timedCharsFromWords2 } from "./align-audio";
 import { tonelessReading } from "./pinyin-readings";
 import { pinyinSyllablesForWord } from "./pinyin";
 import { spokenTones } from "./sandhi";
@@ -156,13 +156,18 @@ export function voicedSpan(
   return { start: voiced[0].t, end: voiced[voiced.length - 1].t };
 }
 
+const PITCH_GAP_SEC = 0.05;
+const PITCH_MIN_RUN_SEC = 0.02;
+
+/** Bins cover only the longest voiced run, so a pause is not averaged into the tone. */
 export function sliceContour(
   points: PitchPoint[],
   start: number,
   end: number,
   bins = 16,
 ): (number | null)[] {
-  if (!(end > start)) return Array(bins).fill(null);
+  const empty = Array<number | null>(bins).fill(null);
+  if (!(end > start)) return empty;
   const span = end - start;
   let innerStart = start;
   let innerEnd = end;
@@ -170,13 +175,24 @@ export function sliceContour(
     innerStart = start + span * 0.18;
     innerEnd = Math.max(innerStart, end - span * 0.06);
   }
-  const voiced = voicedSpan(points, innerStart, innerEnd);
-  const a0 = voiced?.start ?? innerStart;
-  const a1 = voiced?.end ?? innerEnd;
-  const slice = points.filter((p) => p.t >= a0 && p.t <= a1);
-  if (slice.filter((p) => p.hz != null).length < 3) {
-    return Array(bins).fill(null);
+  const runs: [number, number][] = [];
+  let cur: [number, number] | null = null;
+  let last = -1;
+  for (const point of points) {
+    if (point.t < innerStart || point.t > innerEnd || point.hz == null) continue;
+    if (cur && point.t - last <= PITCH_GAP_SEC) cur[1] = point.t;
+    else {
+      if (cur) runs.push(cur);
+      cur = [point.t, point.t];
+    }
+    last = point.t;
   }
+  if (cur) runs.push(cur);
+  const usable = runs.filter((run) => run[1] - run[0] >= PITCH_MIN_RUN_SEC);
+  if (!usable.length) return empty;
+  const [a0, a1] = usable.reduce((best, run) => (run[1] - run[0] > best[1] - best[0] ? run : best));
+  const slice = points.filter((point) => point.t >= a0 && point.t <= a1);
+  if (slice.filter((point) => point.hz != null).length < 3) return empty;
   const semitones = toSemitones(slice);
   const out: (number | null)[] = [];
   for (let i = 0; i < bins; i++) {
@@ -191,6 +207,37 @@ export function sliceContour(
     out.push(vals.length ? mean(vals) : null);
   }
   return out;
+}
+
+export type StrokeContext = {
+  beginPath: () => void;
+  moveTo: (x: number, y: number) => void;
+  lineTo: (x: number, y: number) => void;
+  stroke: () => void;
+};
+
+/** Start a new sub-path after every null so the line does not bridge a gap. */
+export function strokeWithGaps(
+  ctx: StrokeContext,
+  values: (number | null)[],
+  x: (index: number) => number,
+  y: (value: number) => number,
+) {
+  ctx.beginPath();
+  let pen = false;
+  values.forEach((value, index) => {
+    if (value == null) {
+      pen = false;
+      return;
+    }
+    if (!pen) {
+      ctx.moveTo(x(index), y(value));
+      pen = true;
+    } else {
+      ctx.lineTo(x(index), y(value));
+    }
+  });
+  ctx.stroke();
 }
 
 export function classifyTone(contour: (number | null)[]): number | null {
@@ -320,13 +367,18 @@ export function alignUserSyllableTimes(opts: {
   const expected = opts.expectedChars;
   if (!expected.length) return [];
 
-  const timed = timedCharsFromWords(opts.sttWords);
+  const expectedText = opts.expectedText ?? expected.join("");
+  const timed = timedCharsFromWords2(opts.sttWords, expectedText, tonelessReading);
   if (timed.graphChars.length) {
     if (opts.samples && opts.sampleRate && opts.samples.length > 0) {
-      const windows = sliceWindows(
-        opts.expectedText ?? expected.join(""),
-        timed.graphChars,
-        timed.charTimes,
+      const windows = applyOwnership(
+        sliceWindows(
+          expectedText,
+          timed.graphChars,
+          timed.charTimes,
+          opts.samples,
+          opts.sampleRate,
+        ),
         opts.samples,
         opts.sampleRate,
       );
@@ -428,6 +480,51 @@ export function buildSyllablePitches(opts: {
       userSemitones,
     };
   });
+}
+
+export function buildTakeGraph(opts: {
+  words: Word[];
+  hanzi: string;
+  samples: Float32Array;
+  sampleRate: number;
+  heard: string;
+  heardChars?: string[];
+  sttWords: { text: string; start: number; end: number }[];
+  duration: number;
+  refPitch?: PitchPoint[];
+  refTimes?: { hanzi: string; start: number; end: number }[];
+  refDuration?: number;
+}): ToneGraph {
+  const expectedChars = [...opts.hanzi].filter(isHan);
+  const userPitch = extractPitch(opts.samples, opts.sampleRate);
+  const userDuration = opts.duration > 0 ? opts.duration : opts.samples.length / opts.sampleRate;
+  const refPitch = opts.refPitch ?? [];
+  const refTimes =
+    opts.refTimes ?? expectedChars.map((hanzi) => ({ hanzi, start: 0, end: 0 }));
+  const userTimes = alignUserSyllableTimes({
+    expectedChars,
+    expectedText: opts.hanzi,
+    heardChars: opts.heardChars ?? [],
+    sttWords: opts.sttWords,
+    userPitch,
+    userDuration,
+    ttsDuration: opts.refDuration ?? 0,
+    samples: opts.samples,
+    sampleRate: opts.sampleRate,
+  });
+  return {
+    syllables: buildSyllablePitches({
+      words: opts.words,
+      refTimes,
+      userTimes,
+      refPitch,
+      userPitch,
+    }),
+    refPitch,
+    userPitch,
+    duration: Math.max(opts.refDuration ?? 0, userDuration),
+    heard: opts.heard,
+  };
 }
 
 export function referenceSyllables(

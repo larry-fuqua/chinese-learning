@@ -202,6 +202,7 @@ export async function deleteStory(id: string): Promise<boolean> {
   if (!isStoryId(id)) return false;
   try {
     await fs.unlink(storyFile(id));
+    await fs.rm(path.join(dataDir(), "takes", id), { recursive: true, force: true });
     return true;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;

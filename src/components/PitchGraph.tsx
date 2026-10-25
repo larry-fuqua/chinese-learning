@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { canonicalTone } from "@/lib/pitch";
+import { canonicalTone, strokeWithGaps } from "@/lib/pitch";
 import { contourVerdict, toneDifferenceLabel } from "@/lib/sandhi";
 import { toneName } from "@/lib/text";
 import type { PitchPoint, SyllablePitch, ToneGraph } from "@/lib/types";
@@ -358,10 +358,7 @@ function drawLineInSlot(
   color: string,
   lineWidth: number,
 ) {
-  const pts = values
-    .map((v, i) => (v == null ? null : { i, v }))
-    .filter((p): p is { i: number; v: number } => p != null);
-  if (pts.length < 2) return;
+  if (values.filter((value) => value != null).length < 2) return;
   const span = Math.max(2, x1 - x0);
   const x = (i: number) => x0 + (i / Math.max(1, values.length - 1)) * span;
   ctx.save();
@@ -369,13 +366,7 @@ function drawLineInSlot(
   ctx.lineWidth = lineWidth;
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
-  ctx.beginPath();
-  pts.forEach((p, n) => {
-    const y = yTop + semitoneY(p.v, bandH);
-    if (n === 0) ctx.moveTo(x(p.i), y);
-    else ctx.lineTo(x(p.i), y);
-  });
-  ctx.stroke();
+  strokeWithGaps(ctx, values, x, (value) => yTop + semitoneY(value, bandH));
   ctx.restore();
 }
 
@@ -394,10 +385,7 @@ function drawLine(
   lineWidth: number,
   dashed: boolean,
 ) {
-  const pts = values
-    .map((v, i) => (v == null ? null : { i, v }))
-    .filter((p): p is { i: number; v: number } => p != null);
-  if (pts.length < 2) return;
+  if (values.filter((value) => value != null).length < 2) return;
   const x = (i: number) => (i / Math.max(1, values.length - 1)) * width;
   ctx.save();
   ctx.strokeStyle = color;
@@ -405,11 +393,6 @@ function drawLine(
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
   if (dashed) ctx.setLineDash([5, 5]);
-  ctx.beginPath();
-  pts.forEach((p, n) => {
-    if (n === 0) ctx.moveTo(x(p.i), semitoneY(p.v, height));
-    else ctx.lineTo(x(p.i), semitoneY(p.v, height));
-  });
-  ctx.stroke();
+  strokeWithGaps(ctx, values, x, (value) => semitoneY(value, height));
   ctx.restore();
 }
