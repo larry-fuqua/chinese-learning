@@ -107,6 +107,40 @@ export function pinyinSyllablesForWord(hanzi: string, stored: string): string[] 
   return splitWordPinyin(hanzi, stored).pieces;
 }
 
+/** Toneless letters for the aligner. ü is v, matching the app's readings. */
+export function romanizeSyllable(input: string): string {
+  let out = "";
+  for (const ch of input.normalize("NFC").toLowerCase()) {
+    const base = TONE_BASE[ch] ?? ch;
+    if (base >= "a" && base <= "z") out += base;
+  }
+  return out;
+}
+
+/**
+ * One roman syllable per hanzi, taken from the stored word pinyin.
+ * A word list that does not cover the sentence falls back to the dictionary reading.
+ */
+export function alignmentSyllables(
+  hanzi: string,
+  words: { hanzi: string; pinyin: string }[],
+): string[] {
+  const han = [...hanzi].filter(isHanChar);
+  const fromWords: string[] = [];
+  for (const word of words) {
+    const pieces = pinyinSyllablesForWord(word.hanzi, word.pinyin);
+    const wordHan = [...word.hanzi].filter(isHanChar);
+    wordHan.forEach((ch, index) => {
+      fromWords.push(romanizeSyllable(pieces[index] || tonelessReading(ch)));
+    });
+  }
+  const source =
+    fromWords.length === han.length
+      ? fromWords
+      : han.map((ch) => romanizeSyllable(tonelessReading(ch)));
+  return source;
+}
+
 /** Ruby text: the fixed syllables, still taken from the stored word pinyin. */
 export function displayPinyin(hanzi: string, stored: string): string {
   const pieces = pinyinSyllablesForWord(hanzi, stored).filter((piece) => piece.length > 0);

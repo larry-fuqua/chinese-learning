@@ -308,13 +308,31 @@ The library asks for confirmation and says that chapters remain as separate stor
 
 ## TTS cache
 
-Character timings are not stored on the story. Hear reads xAI `graph_chars` and `graph_times` (seconds, one pair per input character) from `DATA_DIR/audio/<hash>.json`, or calls xAI and writes that file. The pitch graph compares a contour to the spoken tone after tone sandhi and neutral tone, using only the longest voiced stretch so a pause is not drawn as a slope. Playback slices keep the token start, minus 30 ms, and extend the end to the energy dip before the next character, or through the pause before punctuation. A pause that still falls inside a slice is handed to the neighbouring character. Recordings go through the same slicer. A run of digits in the transcript is turned into Chinese numerals before the characters are matched, and a multi-character transcript piece stays an even split of that word's span. Per-character pinyin is computed from the stored word pinyin, so story JSON is not rewritten for the syllable split. A story file does not need to be rewritten for the slices either.
+Character timings are not stored on the story. Hear fetches or reads the wav (and, as a fallback, xAI `graph_chars` and `graph_times`) from `DATA_DIR/audio/<hash>.json`. The reader asks `POST /api/align` to place each character, then trims that span on the waveform: the start stays near the token, the end is the energy dip before the next character or the end of a pause, and a pause inside a slice is handed to the neighbour. A recording uses the same aligner. If alignment is unavailable the model keeps the xAI times and the recording keeps the transcript times. A run of digits in a transcript fallback is turned into Chinese numerals before the characters are matched, and a multi-character transcript piece stays an even split of that word's span. Per-character pinyin is computed from the stored word pinyin, so story JSON is not rewritten for the syllable split.
+
+The pitch contour is semitones relative to that speaker's median over the sentence. The tone label is the learned checker in `src/lib/tone-model.json` (P(expected) ≥ 0.25 agrees). Neutral tone stays light / short. The checker is trained on native AI speech only.
 
 `DELETE /api/tts/cache` removes only the audio JSON files. The next Hear fetches timestamps again. Stories and books stay in place. Same auth as the other routes.
 
 ```json
 { "deleted": 3 }
 ```
+
+## Align
+
+`POST /api/align` runs forced alignment on a wav. Same auth as the other routes. The body is JSON:
+
+```json
+{ "text": "你好。", "syllables": ["ni", "hao"], "audioBase64": "<wav base64>" }
+```
+
+`syllables` is one toneless pinyin syllable per hanzi, from the stored word pinyin. The response is plain token spans in seconds, one per syllable:
+
+```json
+{ "spans": [{ "char": "你", "start": 0.12, "end": 0.31 }, { "char": "好", "start": 0.34, "end": 0.62 }] }
+```
+
+`503` when `ALIGN_URL` is unset or the sidecar errors. The reader then uses token timings. The sidecar listens on the Compose network only.
 
 ## Last recite take
 

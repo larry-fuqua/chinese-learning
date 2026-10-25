@@ -67,7 +67,13 @@ docker compose up -d --build
 
 A named volume is created writable by uid 1001. For a bind mount (`./data:/data`), `chown 1001:1001` that directory first. Stories live in `/data/stories/*.json`. Books live in `/data/books/*.json`. Cached TTS audio lives in `/data/audio/`. The first request after upgrading to books copies existing story and book JSON into `/data/backups/<timestamp>-books-paragraphs-v1/` and leaves the originals in place. The audio cache is not copied.
 
-Character timings live in that audio cache, not in the story JSON. Loading this version does not require a re-save or a re-process of existing stories. Word pinyin is stored as the author wrote it; the reader splits it into one syllable per character when it draws the ruby and the pitch label, so those story files are not rewritten. The graph applies Mandarin tone sandhi when it draws the expected contour. Each model slice starts 30 ms before the xAI token and ends at the quiet point before the next character, or after a short silence at a pause. A pause inside a slice is given to the neighbouring character. A recording uses the same windows. Digits in the transcript are read as Chinese numerals, and a multi-character transcript piece stays evenly split. The pitch line breaks across a silent gap. The last recite take for each sentence (audio and transcript) is kept in the data volume, one file per sentence. `DELETE /api/tts/cache` with the bearer key or a session cookie drops the audio JSON only, so the next Hear loads fresh xAI timestamps. See [docs/story-api.md](docs/story-api.md).
+Character timings are not stored in the story JSON. Word pinyin is stored as the author wrote it; the reader splits it into one syllable per character when it draws the ruby and the pitch label, so those story files are not rewritten. The graph applies Mandarin tone sandhi when it draws the expected contour.
+
+Both the model voice and a recording are timed by forced alignment: the Next server sends the known sentence and the wav to the `align` service, which runs torchaudio MMS_FA on CPU. The spans are plain token times. The same waveform trim as before then cuts each character at the energy dip and gives a pause to the neighbouring character. If the sidecar is down, Hear falls back to the cached xAI timestamps and a recording falls back to the transcript times, and the server logs that. Speech-to-text is only used to check what was said. The last recite take for each sentence (audio and transcript) is kept in the data volume, one file per sentence.
+
+The pitch line is semitones against that speaker's median, on one axis for the whole sentence, and it breaks across a real silence. A character's width matches its duration. The tone label is a small logistic model trained on the app's AI voice; AISHELL-3 is held out. It is not trained on the learner's recordings. `DELETE /api/tts/cache` with the bearer key or a session cookie drops the audio JSON only. See [docs/story-api.md](docs/story-api.md).
+
+The align container is on the Compose network only (no host port). It loads the MMS_FA weights once, about 1.2 GB, into the `align-models` volume. Expect roughly 3 GB of RAM for that process. The first start downloads the weights.
 
 Next redirects a trailing slash (`/chinese/`) to `/chinese`. The proxy can forward either path.
 
@@ -95,6 +101,7 @@ Story API for another bot: [docs/story-api.md](docs/story-api.md).
 | `DATA_DIR` | deploy: `/data` | Story JSON and TTS cache. Mount a volume here. |
 | `PORT` | default `3010` in Docker | Port inside the container. |
 | `HOST_PORT` | default `3010` | Host port in `docker-compose.yml` only. |
+| `ALIGN_URL` | Compose: `http://align:8000` | Forced-alignment sidecar. Empty skips it and keeps token timings. |
 
 Login attempts are rate-limited (8 failures per IP and 40 globally per 15 minutes, then HTTP 429).
 
@@ -106,4 +113,6 @@ npm test
 
 ## License
 
-MIT. Not affiliated with xAI.
+The application code is MIT. Not affiliated with xAI.
+
+The MMS_FA acoustic model and aligner weights, downloaded by the `align` service from torchaudio, are **CC-BY-NC 4.0**. They are for personal, non-commercial use. This repository does not redistribute those weights. See the [torchaudio MMS_FA bundle](https://pytorch.org/audio/stable/generated/torchaudio.pipelines.MMS_FA.html) and the [CC-BY-NC 4.0 licence](https://creativecommons.org/licenses/by-nc/4.0/).

@@ -1,10 +1,12 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { fetchAlignment } from "@/lib/align-client";
+import type { AlignSpan } from "@/lib/align-audio";
 import { apiFetch } from "@/lib/api-fetch";
 import { playBuffer, playSlice, startRecorder, type Recorder } from "@/lib/audio";
 import { buildSyllablePitches, buildTakeGraph } from "@/lib/pitch";
-import { decodeToMono } from "@/lib/wav";
+import { bufferToBase64, decodeToMono } from "@/lib/wav";
 import { getBook, getStory, saveStory, upsertNote } from "@/lib/storage";
 import { compareHanzi, glueOrphanPunct, isHan } from "@/lib/text";
 import type { CharSpan } from "@/lib/align-audio";
@@ -77,6 +79,7 @@ export function Reader({ storyId }: { storyId: string }) {
     text: string;
     words: { text: string; start: number; end: number }[];
     duration: number;
+    faSpans: AlignSpan[] | null;
   };
   const modelSliceRef = useRef<ModelSlice | null>(null);
   const takeSliceRef = useRef<TakeSlice | null>(null);
@@ -104,6 +107,7 @@ export function Reader({ storyId }: { storyId: string }) {
           refPitch: model?.refPitch,
           refTimes: model?.windows,
           refDuration: model?.duration,
+          faSpans: take.faSpans,
         }),
       );
       return;
@@ -372,6 +376,12 @@ export function Reader({ storyId }: { storyId: string }) {
           pitchCache.current,
         );
         const userDuration = body.duration ?? take.samples.length / take.sampleRate;
+        const audioBase64 = bufferToBase64(await take.wav.arrayBuffer());
+        const faSpans = await fetchAlignment({
+          hanzi: sentence.hanzi,
+          words: sentence.words,
+          audioBase64,
+        });
         modelSliceRef.current = {
           sentenceId: sentence.id,
           audio: tts.audio,
@@ -386,6 +396,7 @@ export function Reader({ storyId }: { storyId: string }) {
           text: body.text ?? "",
           words: body.words ?? [],
           duration: userDuration,
+          faSpans,
         };
         publishRef.current();
         setGraphSyllable(0);
@@ -557,6 +568,15 @@ export function Reader({ storyId }: { storyId: string }) {
       if (!body.audioBase64) return;
       const decoded = await decodeToMono(base64ToBuffer(body.audioBase64));
       if (cancelled || sentenceRef.current?.id !== sentenceId) return;
+      const current = sentenceRef.current;
+      const faSpans = current
+        ? await fetchAlignment({
+            hanzi: current.hanzi,
+            words: current.words,
+            audioBase64: body.audioBase64,
+          })
+        : null;
+      if (cancelled || sentenceRef.current?.id !== sentenceId) return;
       takeSliceRef.current = {
         sentenceId,
         samples: decoded.samples,
@@ -564,6 +584,7 @@ export function Reader({ storyId }: { storyId: string }) {
         text: body.text ?? "",
         words: body.words ?? [],
         duration: body.duration ?? decoded.samples.length / decoded.sampleRate,
+        faSpans,
       };
       publishRef.current();
     })().catch(() => {

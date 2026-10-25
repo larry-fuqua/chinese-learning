@@ -1,8 +1,16 @@
 import type { PitchPoint, SyllablePitch, ToneGraph, Word } from "./types";
-import { applyOwnership, sliceWindows, syllableTimesFromChars, timedCharsFromWords2 } from "./align-audio";
+import {
+  applyOwnership,
+  sliceWindows,
+  syllableTimesFromChars,
+  timedCharsFromWords2,
+  windowsFromAlignment,
+  type AlignSpan,
+} from "./align-audio";
 import { tonelessReading } from "./pinyin-readings";
 import { pinyinSyllablesForWord } from "./pinyin";
 import { spokenTones } from "./sandhi";
+import { gradeContour } from "./tone-model";
 import { isHan } from "./text";
 
 export { syllableTimesFromChars } from "./align-audio";
@@ -12,6 +20,13 @@ const WIN_SEC = 0.04;
 const MIN_HZ = 70;
 const MAX_HZ = 400;
 const YIN_THRESHOLD = 0.15;
+/** An octave reference survives a dropout no longer than this. A longer gap starts fresh. */
+const BRIDGE_SEC = 0.06;
+const EDGE_ENERGY = 0.3;
+const PITCH_GAP_SEC = 0.05;
+const PITCH_MIN_RUN_SEC = 0.02;
+/** A frame-to-frame jump past this ratio starts a new voiced run. */
+const JUMP_RATIO = 1.25;
 
 export function extractPitch(
   samples: Float32Array,
@@ -23,15 +38,16 @@ export function extractPitch(
   const raw: PitchPoint[] = [];
   for (let start = 0; start + win < samples.length; start += hop) {
     const frame = samples.subarray(start, start + win);
-    energies.push(rms(frame));
-    raw.push({ t: start / sampleRate, hz: yinPitch(frame, sampleRate) });
+    const energy = rms(frame);
+    energies.push(energy);
+    raw.push({ t: start / sampleRate, hz: yinPitch(frame, sampleRate), e: energy });
   }
   const peak = percentile(energies, 0.9) || 1;
   const gate = peak * 0.12;
   const gated = raw.map((p, i) =>
     energies[i] < gate ? { ...p, hz: null } : p,
   );
-  return removeOctaveJumps(medianFilter(gated, 4));
+  return octaveFix(medianFilter(gated, 4));
 }
 
 function rms(frame: Float32Array): number {
@@ -47,11 +63,17 @@ function percentile(values: number[], p: number): number {
   return sorted[i];
 }
 
-function removeOctaveJumps(points: PitchPoint[]): PitchPoint[] {
+/**
+ * Halve or double a frame that jumped an octave from the last good frame.
+ * A dropout of at most BRIDGE_SEC keeps that reference. A longer gap clears it.
+ * A frame that is still far from the reference is dropped and does not move it.
+ */
+export function octaveFix(points: PitchPoint[]): PitchPoint[] {
   let last: number | null = null;
+  let lastT = -1;
   return points.map((p) => {
     if (p.hz == null) {
-      last = null;
+      if (last != null && p.t - lastT > BRIDGE_SEC) last = null;
       return p;
     }
     let hz = p.hz;
@@ -59,12 +81,10 @@ function removeOctaveJumps(points: PitchPoint[]): PitchPoint[] {
       const ratio = hz / last;
       if (ratio > 1.85) hz = hz / 2;
       else if (ratio < 0.54) hz = hz * 2;
-      if (hz / last > 1.7 || hz / last < 0.6) {
-        last = null;
-        return { ...p, hz: null };
-      }
+      if (hz / last > 1.7 || hz / last < 0.6) return { ...p, hz: null };
     }
     last = hz;
+    lastT = p.t;
     return { ...p, hz };
   });
 }
@@ -156,55 +176,110 @@ export function voicedSpan(
   return { start: voiced[0].t, end: voiced[voiced.length - 1].t };
 }
 
-const PITCH_GAP_SEC = 0.05;
-const PITCH_MIN_RUN_SEC = 0.02;
+type RunPoint = { t: number; hz: number; e: number };
 
-/** Bins cover only the longest voiced run, so a pause is not averaged into the tone. */
+/**
+ * Median Hz and semitone range of voiced frames inside the windows.
+ * Fewer than five voiced frames falls back to 150 Hz and 8 semitones.
+ */
+export function speakerStats(
+  points: PitchPoint[],
+  windows?: { start: number; end: number }[],
+): { hz: number; rangeSt: number } {
+  const hz: number[] = [];
+  for (const point of points) {
+    if (point.hz == null) continue;
+    if (
+      windows &&
+      !windows.some((window) => window.end > window.start && point.t >= window.start && point.t <= window.end)
+    ) {
+      continue;
+    }
+    hz.push(point.hz);
+  }
+  if (hz.length < 5) return { hz: 150, rangeSt: 8 };
+  hz.sort((a, b) => a - b);
+  const at = (q: number) => hz[Math.min(hz.length - 1, Math.floor(q * (hz.length - 1)))];
+  const mid = at(0.5);
+  const lo = at(0.05);
+  const hi = at(0.95);
+  const rangeSt = lo > 0 && hi > lo ? 12 * Math.log2(hi / lo) : 8;
+  return { hz: mid, rangeSt };
+}
+
+/**
+ * Sixteen bins across the whole character, in semitones against `refHz`
+ * (or the kept run's own median when `refHz` is omitted).
+ * The longest voiced run is kept. A large pitch jump splits a run.
+ * Bins outside that run stay empty. Holes inside it are filled.
+ */
 export function sliceContour(
   points: PitchPoint[],
   start: number,
   end: number,
   bins = 16,
+  refHz?: number,
 ): (number | null)[] {
   const empty = Array<number | null>(bins).fill(null);
-  if (!(end > start)) return empty;
+  if (!(end > start) || bins < 1) return empty;
   const span = end - start;
-  let innerStart = start;
-  let innerEnd = end;
-  if (span >= 0.08) {
-    innerStart = start + span * 0.18;
-    innerEnd = Math.max(innerStart, end - span * 0.06);
-  }
-  const runs: [number, number][] = [];
-  let cur: [number, number] | null = null;
-  let last = -1;
+  const innerStart = span >= 0.08 ? start + span * 0.18 : start;
+  const innerEnd = span >= 0.08 ? Math.max(innerStart, end - span * 0.06) : end;
+  const runs: RunPoint[][] = [];
+  let cur: RunPoint[] = [];
+  let lastT = -1;
   for (const point of points) {
-    if (point.t < innerStart || point.t > innerEnd || point.hz == null) continue;
-    if (cur && point.t - last <= PITCH_GAP_SEC) cur[1] = point.t;
+    if (point.t < innerStart || point.t > innerEnd || point.hz == null || !(point.hz > 0)) continue;
+    const sample = { t: point.t, hz: point.hz, e: point.e ?? 1 };
+    const prevHz = cur.length ? cur[cur.length - 1].hz : sample.hz;
+    const jump =
+      cur.length > 0 && Math.max(sample.hz / prevHz, prevHz / sample.hz) > JUMP_RATIO;
+    if (cur.length && point.t - lastT <= PITCH_GAP_SEC && !jump) cur.push(sample);
     else {
-      if (cur) runs.push(cur);
-      cur = [point.t, point.t];
+      if (cur.length) runs.push(cur);
+      cur = [sample];
     }
-    last = point.t;
+    lastT = point.t;
   }
-  if (cur) runs.push(cur);
-  const usable = runs.filter((run) => run[1] - run[0] >= PITCH_MIN_RUN_SEC);
-  if (!usable.length) return empty;
-  const [a0, a1] = usable.reduce((best, run) => (run[1] - run[0] > best[1] - best[0] ? run : best));
-  const slice = points.filter((point) => point.t >= a0 && point.t <= a1);
-  if (slice.filter((point) => point.hz != null).length < 3) return empty;
-  const semitones = toSemitones(slice);
+  if (cur.length) runs.push(cur);
+  let run: RunPoint[] | null = null;
+  for (const candidate of runs) {
+    const dur = candidate[candidate.length - 1].t - candidate[0].t;
+    if (dur < PITCH_MIN_RUN_SEC) continue;
+    if (!run || dur > run[run.length - 1].t - run[0].t) run = candidate;
+  }
+  if (!run) return empty;
+  const peak = Math.max(...run.map((point) => point.e));
+  let i0 = 0;
+  let i1 = run.length - 1;
+  while (i0 < i1 && run[i0].e < EDGE_ENERGY * peak) i0++;
+  while (i1 > i0 && run[i1].e < EDGE_ENERGY * peak) i1--;
+  run = run.slice(i0, i1 + 1);
+  if (run.length < 3) return empty;
+  const voiced = run.map((point) => point.hz).sort((a, b) => a - b);
+  const mid = refHz && refHz > 0 ? refHz : voiced[Math.floor(voiced.length / 2)];
   const out: (number | null)[] = [];
   for (let i = 0; i < bins; i++) {
-    const a = a0 + ((a1 - a0) * i) / bins;
-    const b = a0 + ((a1 - a0) * (i + 1)) / bins;
+    const a = start + (span * i) / bins;
+    const b = start + (span * (i + 1)) / bins;
     const vals: number[] = [];
-    for (let j = 0; j < slice.length; j++) {
-      if (slice[j].t >= a && slice[j].t < b && semitones[j] != null) {
-        vals.push(semitones[j] as number);
-      }
+    for (const point of run) {
+      const inside = point.t >= a && (point.t < b || (i === bins - 1 && point.t <= b));
+      if (inside) vals.push(12 * Math.log2(point.hz / mid));
     }
     out.push(vals.length ? mean(vals) : null);
+  }
+  for (let i = 0; i < bins; i++) {
+    if (out[i] != null) continue;
+    let left = i - 1;
+    while (left >= 0 && out[left] == null) left--;
+    let right = i + 1;
+    while (right < bins && out[right] == null) right++;
+    if (left >= 0 && right < bins) {
+      const lv = out[left] as number;
+      const rv = out[right] as number;
+      out[i] = lv + ((rv - lv) * (i - left)) / (right - left);
+    }
   }
   return out;
 }
@@ -363,11 +438,26 @@ export function alignUserSyllableTimes(opts: {
   ttsDuration: number;
   samples?: Float32Array;
   sampleRate?: number;
+  /** Plain forced-alignment spans. When present, transcript times are not used. */
+  faSpans?: AlignSpan[] | null;
 }): ({ hanzi: string; start: number; end: number } | null)[] {
   const expected = opts.expectedChars;
   if (!expected.length) return [];
 
   const expectedText = opts.expectedText ?? expected.join("");
+  if (opts.faSpans && opts.faSpans.length && opts.samples && opts.sampleRate) {
+    const windows = windowsFromAlignment(
+      expectedText,
+      opts.faSpans,
+      opts.samples,
+      opts.sampleRate,
+    );
+    return expected.map((hanzi, i) => {
+      const window = windows[i];
+      if (!window || !(window.end > window.start)) return null;
+      return { hanzi, start: window.start, end: window.end };
+    });
+  }
   const timed = timedCharsFromWords2(opts.sttWords, expectedText, tonelessReading);
   if (timed.graphChars.length) {
     if (opts.samples && opts.sampleRate && opts.samples.length > 0) {
@@ -452,26 +542,54 @@ export function buildSyllablePitches(opts: {
     });
   }
   const tones = spokenTones(chars);
+  const refStats = speakerStats(
+    opts.refPitch,
+    opts.refTimes.filter((window) => window.end > window.start),
+  );
+  const userStats = speakerStats(
+    opts.userPitch,
+    opts.userTimes.filter((window): window is { hanzi: string; start: number; end: number } =>
+      !!window && window.end > window.start,
+    ),
+  );
+  let prevRef = 0;
+  let prevUser = 0;
   return chars.map((ch, i) => {
     const ref = opts.refTimes[i];
     const user = opts.userTimes[i];
     const hasUser = !!user && user.end > user.start;
+    const hasRef = !!ref && ref.end > ref.start;
     const tone = tones[i];
-    const refSemitones =
-      ref && ref.end > ref.start
-        ? sliceContour(opts.refPitch, ref.start, ref.end)
-        : Array(16).fill(null);
+    const expected = tone?.spokenTone ?? 5;
+    const refSemitones = hasRef
+      ? sliceContour(opts.refPitch, ref.start, ref.end, 16, refStats.hz)
+      : Array<number | null>(16).fill(null);
     const userSemitones = hasUser
-      ? sliceContour(opts.userPitch, user.start, user.end)
-      : Array(16).fill(null);
+      ? sliceContour(opts.userPitch, user.start, user.end, 16, userStats.hz)
+      : Array<number | null>(16).fill(null);
+    const refGrade = gradeContour(
+      refSemitones,
+      refStats.rangeSt,
+      hasRef ? ref.end - ref.start : 0,
+      prevRef,
+      expected,
+    );
+    prevRef = refGrade.nextPrev;
+    const userGrade = hasUser
+      ? gradeContour(userSemitones, userStats.rangeSt, user.end - user.start, prevUser, expected)
+      : { tone: null, pExpected: null, nextPrev: prevUser };
+    if (hasUser) prevUser = userGrade.nextPrev;
     return {
       hanzi: ch.hanzi,
       pinyin: ch.pinyin,
-      expectedTone: tone?.spokenTone ?? 5,
+      expectedTone: expected,
       dictionaryTone: tone?.dictionaryTone ?? 5,
       spokenTone: tone?.spokenTone ?? 5,
       toneNote: tone?.toneNote ?? "",
-      heardTone: hasUser ? classifyTone(userSemitones) : null,
+      heardTone: userGrade.tone,
+      pExpected: expected === 5 ? null : userGrade.pExpected,
+      modelHeardTone: hasRef ? refGrade.tone : null,
+      modelPExpected: expected === 5 || !hasRef ? null : refGrade.pExpected,
       start: ref?.start ?? 0,
       end: ref?.end ?? 0,
       userStart: hasUser ? user.start : null,
@@ -494,6 +612,8 @@ export function buildTakeGraph(opts: {
   refPitch?: PitchPoint[];
   refTimes?: { hanzi: string; start: number; end: number }[];
   refDuration?: number;
+  /** Plain forced-alignment spans for this recording. Null uses transcript times. */
+  faSpans?: AlignSpan[] | null;
 }): ToneGraph {
   const expectedChars = [...opts.hanzi].filter(isHan);
   const userPitch = extractPitch(opts.samples, opts.sampleRate);
@@ -511,6 +631,7 @@ export function buildTakeGraph(opts: {
     ttsDuration: opts.refDuration ?? 0,
     samples: opts.samples,
     sampleRate: opts.sampleRate,
+    faSpans: opts.faSpans,
   });
   return {
     syllables: buildSyllablePitches({

@@ -1,8 +1,15 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { canonicalTone, strokeWithGaps } from "@/lib/pitch";
-import { contourVerdict, toneDifferenceLabel } from "@/lib/sandhi";
+import {
+  binCenterX,
+  sentencePxPerSec,
+  semitoneToY,
+  sharedPitchAxis,
+  type PitchAxis,
+} from "@/lib/pitch-scale";
+import { pitchTrackNote, toneDifferenceLabel } from "@/lib/sandhi";
 import { toneName } from "@/lib/text";
 import type { PitchPoint, SyllablePitch, ToneGraph } from "@/lib/types";
 
@@ -31,12 +38,16 @@ export function PitchGraph({
   hasUserAudio: boolean;
   onReplay: (index: number, alternate: boolean) => void;
 }) {
+  const [pxPerSec, setPxPerSec] = useState(0);
   const syllable = graph.syllables[selected] ?? graph.syllables[0];
   const hasUserTake = graph.userPitch.some((p) => p.hz != null);
   const syllableHasUser = syllable?.userStart != null;
   const difference = syllable
     ? toneDifferenceLabel(syllable.dictionaryTone, syllable.spokenTone, syllable.toneNote)
     : null;
+  const axis = sharedPitchAxis(
+    graph.syllables.flatMap((item) => [item.refSemitones, item.userSemitones]),
+  );
 
   return (
     <section className="bg-graph text-paper">
@@ -50,10 +61,20 @@ export function PitchGraph({
               <span className="hanzi text-base text-paper">{syllable.hanzi}</span>{" "}
               {syllable.pinyin} · {toneName(syllable.expectedTone)}
               {difference ? ` · ${difference}` : ""}
-              {syllableHasUser && syllable.heardTone != null
-                ? ` · yours ${toneName(syllable.heardTone)}`
+              {syllable
+                ? pitchTrackNote({
+                    track: replayTrack,
+                    hasUserTake,
+                    expectedTone: syllable.expectedTone,
+                    heardTone: syllable.heardTone,
+                    modelHeardTone: syllable.modelHeardTone,
+                    pExpected: syllable.pExpected,
+                    modelPExpected: syllable.modelPExpected,
+                    userStart: syllable.userStart,
+                    start: syllable.start,
+                    end: syllable.end,
+                  })
                 : ""}
-              {hasUserTake ? contourVerdict(syllable) : ""}
             </p>
           ) : null}
           {graph.heard ? (
@@ -88,9 +109,16 @@ export function PitchGraph({
             selected={selected}
             replayIndex={replayIndex}
             playingTrack={playingTrack}
+            axis={axis}
+            onPxPerSec={setPxPerSec}
           />
           <div className="w-36 shrink-0 sm:w-44">
-            <SyllableCanvas syllable={syllable} showUser={syllableHasUser} />
+            <SyllableCanvas
+              syllable={syllable}
+              showUser={syllableHasUser}
+              axis={axis}
+              pxPerSec={pxPerSec}
+            />
           </div>
         </div>
 
@@ -173,6 +201,8 @@ function SentenceCanvas({
   selected,
   replayIndex,
   playingTrack,
+  axis,
+  onPxPerSec,
 }: {
   refPitch: PitchPoint[];
   userPitch: PitchPoint[];
@@ -182,6 +212,8 @@ function SentenceCanvas({
   selected: number;
   replayIndex: number | null;
   playingTrack: ReplayTrack | null;
+  axis: PitchAxis;
+  onPxPerSec: (pxPerSec: number) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -250,7 +282,7 @@ function SentenceCanvas({
         ctx.fillStyle = "rgba(243, 234, 216, 0.5)";
         ctx.font = "12px 'Noto Serif SC', serif";
         ctx.fillText(s.hanzi, x0 + Math.max(2, (x1 - x0) / 2 - 6), refTop + 12);
-        drawLineInSlot(ctx, s.refSemitones, x0, x1, refTop, band, "#e8c27a", 2.1);
+        drawLineInSlot(ctx, s.refSemitones, x0, x1, refTop, band, "#e8c27a", 2.1, axis);
       }
       if (s.userStart != null && s.userEnd != null && s.userEnd > s.userStart) {
         const ux0 = (s.userStart / span) * width;
@@ -262,16 +294,7 @@ function SentenceCanvas({
           ctx.fillStyle = "rgba(243, 234, 216, 0.08)";
           ctx.fillRect(ux0, userTop, Math.max(2, ux1 - ux0), band);
         }
-        drawLineInSlot(
-          ctx,
-          s.userSemitones,
-          ux0,
-          ux1,
-          userTop,
-          band,
-          "#f3ead8",
-          2.2,
-        );
+        drawLineInSlot(ctx, s.userSemitones, ux0, ux1, userTop, band, "#f3ead8", 2.2, axis);
       }
     });
 
@@ -284,7 +307,8 @@ function SentenceCanvas({
       ctx.lineTo(x, height);
       ctx.stroke();
     }
-  }, [refPitch, userPitch, syllables, duration, playheadT, selected, replayIndex, playingTrack]);
+    onPxPerSec(sentencePxPerSec(width, span));
+  }, [refPitch, userPitch, syllables, duration, playheadT, selected, replayIndex, playingTrack, axis, onPxPerSec]);
 
   return (
     <canvas
@@ -298,9 +322,13 @@ function SentenceCanvas({
 function SyllableCanvas({
   syllable,
   showUser,
+  axis,
+  pxPerSec,
 }: {
   syllable?: SyllablePitch;
   showUser: boolean;
+  axis: PitchAxis;
+  pxPerSec: number;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
 
@@ -328,12 +356,21 @@ function SyllableCanvas({
     }
 
     const template = canonicalTone(syllable.expectedTone);
-    drawLine(ctx, template, width, height, "#8aa88f", 1.5, true);
-    drawLine(ctx, syllable.refSemitones, width, height, "#e8c27a", 2.4, false);
-    if (showUser) {
-      drawLine(ctx, syllable.userSemitones, width, height, "#f3ead8", 3.2, false);
+    const modelDur = Math.max(0, syllable.end - syllable.start);
+    const userDur =
+      syllable.userStart != null && syllable.userEnd != null && syllable.userEnd > syllable.userStart
+        ? syllable.userEnd - syllable.userStart
+        : 0;
+    const modelW = modelDur * pxPerSec;
+    const userW = userDur * pxPerSec;
+    if (modelW > 1) {
+      drawLine(ctx, template, modelW, height, "#8aa88f", 1.5, true, axis);
+      drawLine(ctx, syllable.refSemitones, modelW, height, "#e8c27a", 2.4, false, axis);
     }
-  }, [syllable, showUser]);
+    if (showUser && userW > 1) {
+      drawLine(ctx, syllable.userSemitones, userW, height, "#f3ead8", 3.2, false, axis);
+    }
+  }, [syllable, showUser, axis, pxPerSec]);
 
   return (
     <canvas
@@ -357,23 +394,17 @@ function drawLineInSlot(
   bandH: number,
   color: string,
   lineWidth: number,
+  axis: PitchAxis,
 ) {
   if (values.filter((value) => value != null).length < 2) return;
-  const span = Math.max(2, x1 - x0);
-  const x = (i: number) => x0 + (i / Math.max(1, values.length - 1)) * span;
+  const x = (i: number) => binCenterX(i, values.length, x0, x1);
   ctx.save();
   ctx.strokeStyle = color;
   ctx.lineWidth = lineWidth;
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
-  strokeWithGaps(ctx, values, x, (value) => yTop + semitoneY(value, bandH));
+  strokeWithGaps(ctx, values, x, (value) => yTop + semitoneToY(value, bandH, axis));
   ctx.restore();
-}
-
-function semitoneY(v: number, height: number): number {
-  const min = -4.5;
-  const max = 4.5;
-  return height - ((v - min) / (max - min)) * height;
 }
 
 function drawLine(
@@ -384,15 +415,16 @@ function drawLine(
   color: string,
   lineWidth: number,
   dashed: boolean,
+  axis: PitchAxis,
 ) {
-  if (values.filter((value) => value != null).length < 2) return;
-  const x = (i: number) => (i / Math.max(1, values.length - 1)) * width;
+  if (values.filter((value) => value != null).length < 2 || !(width > 1)) return;
+  const x = (i: number) => binCenterX(i, values.length, 0, width);
   ctx.save();
   ctx.strokeStyle = color;
   ctx.lineWidth = lineWidth;
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
   if (dashed) ctx.setLineDash([5, 5]);
-  strokeWithGaps(ctx, values, x, (value) => semitoneY(value, height));
+  strokeWithGaps(ctx, values, x, (value) => semitoneToY(value, height, axis));
   ctx.restore();
 }

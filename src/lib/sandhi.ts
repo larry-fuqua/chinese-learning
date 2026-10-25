@@ -1,4 +1,4 @@
-import { toneFromPinyin } from "./text";
+import { toneFromPinyin, toneName } from "./text";
 
 export type Reading = { hanzi: string; pinyin: string };
 
@@ -170,14 +170,51 @@ export function toneDifferenceLabel(
   return `dict ${toneShort(dictionaryTone)} vs spoken ${toneShort(spokenTone)}${note}`;
 }
 
-export function contourVerdict(opts: {
-  userStart: number | null;
+/** Notes line for the Model / Yours toggle. The verdict follows the track that is selected. */
+export function pitchTrackNote(opts: {
+  track: "model" | "yours";
+  hasUserTake: boolean;
   expectedTone: number;
   heardTone: number | null;
+  modelHeardTone: number | null;
+  pExpected: number | null;
+  modelPExpected: number | null;
+  userStart: number | null;
+  start: number;
+  end: number;
 }): string {
-  if (opts.userStart == null) return " · not in this take";
+  const viewingModel = opts.track === "model";
+  if (!viewingModel && !opts.hasUserTake) return "";
+  const heardTone = viewingModel ? opts.modelHeardTone : opts.heardTone;
+  const pExpected = viewingModel ? opts.modelPExpected : opts.pExpected;
+  const present = viewingModel ? opts.end > opts.start : opts.userStart != null;
+  const label = heardTone != null ? ` · ${viewingModel ? "model" : "yours"} ${toneName(heardTone)}` : "";
+  const verdict =
+    viewingModel || opts.hasUserTake
+      ? contourVerdict({
+          present,
+          expectedTone: opts.expectedTone,
+          heardTone,
+          pExpected,
+        })
+      : "";
+  return label + verdict;
+}
+
+export function contourVerdict(opts: {
+  userStart?: number | null;
+  present?: boolean;
+  expectedTone: number;
+  heardTone: number | null;
+  /** When set, P(expected) >= 0.25 counts as a match. */
+  pExpected?: number | null;
+}): string {
+  const present = opts.present ?? opts.userStart != null;
+  if (!present) return " · not in this take";
   if (opts.expectedTone === 5 || opts.heardTone === 5) return " · light / short";
   if (opts.heardTone == null) return " · no clear pitch — try closer to the mic";
-  if (opts.heardTone === opts.expectedTone) return " · shape matches";
+  const agreed =
+    opts.pExpected != null ? opts.pExpected >= 0.25 : opts.heardTone === opts.expectedTone;
+  if (agreed) return " · shape matches";
   return " · shape is off";
 }

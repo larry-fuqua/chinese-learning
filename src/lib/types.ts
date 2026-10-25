@@ -80,6 +80,8 @@ export type TtsCache = {
 export type PitchPoint = {
   t: number;
   hz: number | null;
+  /** Frame RMS from extractPitch. Older points may omit it. */
+  e?: number;
 };
 
 export type SyllablePitch = {
@@ -91,7 +93,14 @@ export type SyllablePitch = {
   spokenTone: number;
   /** Why spoken tone differs from the dictionary tone. Empty when they match. */
   toneNote: string;
+  /** Learned checker label for the recording. Null when the contour is too short. */
   heardTone: number | null;
+  /** P(expected tone) for the recording. Null for a neutral tone or no contour. */
+  pExpected: number | null;
+  /** Learned checker label for the model voice. */
+  modelHeardTone: number | null;
+  /** P(expected tone) for the model voice. Null for a neutral tone or no contour. */
+  modelPExpected: number | null;
   start: number;
   end: number;
   userStart: number | null;

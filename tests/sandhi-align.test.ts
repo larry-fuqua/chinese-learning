@@ -10,6 +10,7 @@ import {
 import { buildSyllablePitches, sliceContour } from "../src/lib/pitch";
 import {
   contourVerdict,
+  pitchTrackNote,
   spokenTones,
   toneDifferenceLabel,
   type Reading,
@@ -64,6 +65,36 @@ test("a sandhi contour matches the spoken tone", () => {
   assert.equal(contourVerdict({ userStart: 0.1, expectedTone: 2, heardTone: 5 }), " · light / short");
   assert.equal(contourVerdict({ userStart: 0.1, expectedTone: 3, heardTone: 2 }), " · shape is off");
   assert.equal(contourVerdict({ userStart: null, expectedTone: 2, heardTone: 2 }), " · not in this take");
+  assert.equal(
+    contourVerdict({ userStart: 0.1, expectedTone: 3, heardTone: 4, pExpected: 0.3 }),
+    " · shape matches",
+  );
+  assert.equal(
+    contourVerdict({ userStart: 0.1, expectedTone: 3, heardTone: 4, pExpected: 0.2 }),
+    " · shape is off",
+  );
+});
+
+test("the notes line follows the model or yours toggle", () => {
+  const shared = {
+    hasUserTake: true,
+    expectedTone: 4,
+    heardTone: 2,
+    modelHeardTone: 4,
+    pExpected: 0.1,
+    modelPExpected: 0.8,
+    userStart: 0.2,
+    start: 0.1,
+    end: 0.4,
+  };
+  assert.match(pitchTrackNote({ track: "model", ...shared }), /model 4th/);
+  assert.match(pitchTrackNote({ track: "model", ...shared }), /shape matches/);
+  assert.match(pitchTrackNote({ track: "yours", ...shared }), /yours 2nd/);
+  assert.match(pitchTrackNote({ track: "yours", ...shared }), /shape is off/);
+  assert.equal(
+    pitchTrackNote({ track: "yours", ...shared, hasUserTake: false }),
+    "",
+  );
 });
 
 test("syllable pitches use the spoken tone and stay inside the timestamp", () => {
@@ -82,10 +113,15 @@ test("syllable pitches use the spoken tone and stay inside the timestamp", () =>
   assert.equal(syllables[0]?.expectedTone, 2);
   assert.equal(syllables[0]?.toneNote, "3rd-tone sandhi");
   assert.equal(syllables[1]?.expectedTone, 3);
-  const contour = syllables[0]?.refSemitones ?? [];
-  const voiced = contour.filter((value): value is number => value != null);
-  assert.ok(voiced.length >= 2);
-  for (const value of voiced) assert.ok(Math.abs(value) < 1);
+  const first = (syllables[0]?.refSemitones ?? []).filter((value): value is number => value != null);
+  const second = (syllables[1]?.refSemitones ?? []).filter((value): value is number => value != null);
+  assert.ok(first.length >= 2);
+  assert.ok(second.length >= 2);
+  const spanOf = (values: number[]) => Math.max(...values) - Math.min(...values);
+  const avg = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
+  assert.ok(spanOf(first) < 1, String(spanOf(first)));
+  assert.ok(spanOf(second) < 1, String(spanOf(second)));
+  assert.ok(avg(second) - avg(first) > 8);
 });
 
 test("index alignment keeps each copy of a character on its own interval", () => {

@@ -407,6 +407,77 @@ export function applyOwnership(
   }));
 }
 
+export type AlignSpan = { char: string; start: number; end: number };
+
+/**
+ * Plain forced-alignment spans, then the same slice and ownership as token times.
+ * Punctuation is given the gap between the neighbouring characters.
+ * Starts are not pulled back to the previous character's end.
+ */
+export function windowsFromAlignment(
+  text: string,
+  spans: AlignSpan[],
+  samples: Float32Array,
+  sampleRate: number,
+): CharSpan[] {
+  const chars = [...text];
+  const hanAt: number[] = [];
+  chars.forEach((ch, index) => {
+    if (isHan(ch)) hanAt.push(index);
+  });
+  const charTimes: ([number, number] | null)[] = chars.map(() => null);
+  const count = Math.min(hanAt.length, spans.length);
+  for (let i = 0; i < count; i++) {
+    const at = hanAt[i];
+    const span = spans[i];
+    if (at == null || !span || !(span.end > span.start)) continue;
+    charTimes[at] = [span.start, span.end];
+  }
+  for (let i = 0; i < chars.length; i++) {
+    if (charTimes[i]) continue;
+    let prevEnd = 0;
+    for (let j = i - 1; j >= 0; j--) {
+      const earlier = charTimes[j];
+      if (earlier) {
+        prevEnd = earlier[1];
+        break;
+      }
+    }
+    let nextStart = prevEnd;
+    for (let j = i + 1; j < chars.length; j++) {
+      const later = charTimes[j];
+      if (later && isHan(chars[j] ?? "")) {
+        nextStart = later[0];
+        break;
+      }
+    }
+    charTimes[i] = [prevEnd, Math.max(prevEnd, nextStart)];
+  }
+  const times: [number, number][] = charTimes.map((span) => (span ? [span[0], span[1]] : [0, 0]));
+  return applyOwnership(sliceWindows(text, chars, times, samples, sampleRate), samples, sampleRate);
+}
+
+/** True when speech on both sides of a pause (at least GAP_MIN) sits inside the window. */
+export function windowSpansPause(
+  start: number,
+  end: number,
+  samples: Float32Array,
+  sampleRate: number,
+): boolean {
+  if (!(end > start)) return false;
+  const frames = frameRms(samples, sampleRate).map((frame) => ({
+    t: frame.t + 0.01,
+    rms: frame.rms,
+  }));
+  if (!frames.length) return false;
+  const sorted = frames.map((frame) => frame.rms).sort((a, b) => a - b);
+  const threshold = Math.max(
+    OWNERSHIP.SPEECH_K * percentile(sorted, 0.99),
+    OWNERSHIP.NOISE_MULT * percentile(sorted, 0.1),
+  );
+  return speechRuns(frames, threshold, start, end).length > 1;
+}
+
 /** Arabic digits to Chinese candidates. Cardinal first when it is well formed, then digit by digit. */
 export function numToZh(digits: string): string[] {
   const seq = [...digits].map((digit) => DIGITS_ZH[+digit] ?? "").join("");

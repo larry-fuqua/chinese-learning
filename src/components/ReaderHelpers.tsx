@@ -10,10 +10,11 @@ import type {
   Word,
 } from "@/lib/types";
 import type { CharSpan } from "@/lib/align-audio";
-import { applyOwnership, normalizeTimestampUnit, sliceWindows } from "@/lib/align-audio";
+import { applyOwnership, normalizeTimestampUnit, sliceWindows, windowsFromAlignment } from "@/lib/align-audio";
+import { fetchAlignment } from "@/lib/align-client";
 import { displayPinyin } from "@/lib/pinyin";
 import { isHan } from "@/lib/text";
-import { decodeToMono } from "@/lib/wav";
+import { bufferToBase64, decodeToMono } from "@/lib/wav";
 import { buildSyllablePitches, extractPitch } from "@/lib/pitch";
 export function SentenceLine({
   sentence,
@@ -132,6 +133,7 @@ export function countBefore(chars: string[], index: number, ch: string): number 
 export function ttsKey(storyId: string, sentenceId: string, speed: number) {
   return `${storyId}:${sentenceId}:${speed.toFixed(2)}`;
 }
+const alignedWindows = new Map<string, CharSpan[]>();
 export async function decodeReference(
   sentence: Sentence,
   tts: TtsCache,
@@ -149,17 +151,35 @@ export async function decodeReference(
   const duration = tts.duration || decoded.samples.length / decoded.sampleRate;
   const normalized = normalizeTimestampUnit(tts.charTimes, duration);
   tts.charTimes = normalized.times;
-  const windows = applyOwnership(
-    sliceWindows(
-      sentence.hanzi,
-      tts.graphChars,
-      tts.charTimes,
-      decoded.samples,
-      decoded.sampleRate,
-    ),
-    decoded.samples,
-    decoded.sampleRate,
-  );
+  let windows = alignedWindows.get(key);
+  if (!windows) {
+    const spans = await fetchAlignment({
+      hanzi: sentence.hanzi,
+      words: sentence.words,
+      audioBase64: bufferToBase64(tts.audio),
+    });
+    if (spans?.length) {
+      windows = windowsFromAlignment(
+        sentence.hanzi,
+        spans,
+        decoded.samples,
+        decoded.sampleRate,
+      );
+      alignedWindows.set(key, windows);
+    } else {
+      windows = applyOwnership(
+        sliceWindows(
+          sentence.hanzi,
+          tts.graphChars,
+          tts.charTimes,
+          decoded.samples,
+          decoded.sampleRate,
+        ),
+        decoded.samples,
+        decoded.sampleRate,
+      );
+    }
+  }
   return { refPitch, duration, windows };
 }
 
