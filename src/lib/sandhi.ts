@@ -170,6 +170,11 @@ export function toneDifferenceLabel(
   return `dict ${toneShort(dictionaryTone)} vs spoken ${toneShort(spokenTone)}${note}`;
 }
 
+/** A rise and a fall are opposite shapes. Other pairs are left to the checker. */
+export function oppositePitchShape(a: number, b: number): boolean {
+  return (a === 2 && b === 4) || (a === 4 && b === 2);
+}
+
 /** Notes line for the Model / Yours toggle. The verdict follows the track that is selected. */
 export function pitchTrackNote(opts: {
   track: "model" | "yours";
@@ -182,10 +187,16 @@ export function pitchTrackNote(opts: {
   userStart: number | null;
   start: number;
   end: number;
+  /** Shape class of the contour that is drawn. Null when the slice is too short to judge. */
+  shapeTone?: number | null;
 }): string {
   const viewingModel = opts.track === "model";
   if (!viewingModel && !opts.hasUserTake) return "";
-  const heardTone = viewingModel ? opts.modelHeardTone : opts.heardTone;
+  let heardTone = viewingModel ? opts.modelHeardTone : opts.heardTone;
+  const shape = opts.shapeTone ?? null;
+  if (shape != null && shape !== 5 && heardTone != null && oppositePitchShape(shape, heardTone)) {
+    heardTone = shape;
+  }
   const pExpected = viewingModel ? opts.modelPExpected : opts.pExpected;
   const present = viewingModel ? opts.end > opts.start : opts.userStart != null;
   const label = heardTone != null ? ` · ${viewingModel ? "model" : "yours"} ${toneName(heardTone)}` : "";
@@ -196,6 +207,7 @@ export function pitchTrackNote(opts: {
           expectedTone: opts.expectedTone,
           heardTone,
           pExpected,
+          shapeTone: shape,
         })
       : "";
   return label + verdict;
@@ -208,11 +220,16 @@ export function contourVerdict(opts: {
   heardTone: number | null;
   /** When set, P(expected) >= 0.25 counts as a match. */
   pExpected?: number | null;
+  /** Shape of the drawn contour. An opposite movement overrides a probability match. */
+  shapeTone?: number | null;
 }): string {
   const present = opts.present ?? opts.userStart != null;
   if (!present) return " · not in this take";
   if (opts.expectedTone === 5 || opts.heardTone === 5) return " · light / short";
   if (opts.heardTone == null) return " · no clear pitch — try closer to the mic";
+  if (opts.shapeTone != null && opts.shapeTone !== 5 && oppositePitchShape(opts.shapeTone, opts.expectedTone)) {
+    return " · shape is off";
+  }
   const agreed =
     opts.pExpected != null ? opts.pExpected >= 0.25 : opts.heardTone === opts.expectedTone;
   if (agreed) return " · shape matches";

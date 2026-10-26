@@ -6,6 +6,7 @@ import type { AlignSpan } from "@/lib/align-audio";
 import { apiFetch } from "@/lib/api-fetch";
 import { playBuffer, playSlice, startRecorder, type Recorder } from "@/lib/audio";
 import { buildSyllablePitches, buildTakeGraph } from "@/lib/pitch";
+import { visibleUserTake } from "@/lib/take-display";
 import { bufferToBase64, decodeToMono } from "@/lib/wav";
 import { getBook, getStory, saveStory, upsertNote } from "@/lib/storage";
 import { compareHanzi, glueOrphanPunct, isHan } from "@/lib/text";
@@ -49,6 +50,8 @@ export function Reader({ storyId }: { storyId: string }) {
   const [replayIndex, setReplayIndex] = useState<number | null>(null);
   const [playingTrack, setPlayingTrack] = useState<ReplayTrack | null>(null);
   const [hasUserAudio, setHasUserAudio] = useState(false);
+  const [savedTakeAvailable, setSavedTakeAvailable] = useState(false);
+  const [showingPreviousTake, setShowingPreviousTake] = useState(false);
   const [matches, setMatches] = useState<("ok" | "miss" | "sub" | "extra")[] | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Note | null>(null);
@@ -82,13 +85,19 @@ export function Reader({ storyId }: { storyId: string }) {
     faSpans: AlignSpan[] | null;
   };
   const modelSliceRef = useRef<ModelSlice | null>(null);
-  const takeSliceRef = useRef<TakeSlice | null>(null);
+  const sessionTakeRef = useRef<TakeSlice | null>(null);
+  const savedTakeRef = useRef<TakeSlice | null>(null);
+  const showSavedRef = useRef(false);
   const publishRef = useRef<() => void>(() => {});
   publishRef.current = () => {
     const current = sentenceRef.current;
     if (!current) return;
     const model = modelSliceRef.current?.sentenceId === current.id ? modelSliceRef.current : null;
-    const take = takeSliceRef.current?.sentenceId === current.id ? takeSliceRef.current : null;
+    const session = sessionTakeRef.current?.sentenceId === current.id ? sessionTakeRef.current : null;
+    const saved = savedTakeRef.current?.sentenceId === current.id ? savedTakeRef.current : null;
+    const visible = visibleUserTake({ session, saved, showSaved: showSavedRef.current });
+    const take = visible.take;
+    setShowingPreviousTake(visible.previous);
     if (model) modelAudioRef.current = model.audio;
     if (take) {
       userAudioRef.current = { samples: take.samples, sampleRate: take.sampleRate };
@@ -114,6 +123,7 @@ export function Reader({ storyId }: { storyId: string }) {
     }
     userAudioRef.current = null;
     setHasUserAudio(false);
+    setMatches(null);
     if (!model) {
       setGraph(null);
       return;
@@ -389,7 +399,7 @@ export function Reader({ storyId }: { storyId: string }) {
           windows,
           duration,
         };
-        takeSliceRef.current = {
+        sessionTakeRef.current = {
           sentenceId: sentence.id,
           samples: take.samples,
           sampleRate: take.sampleRate,
@@ -398,6 +408,8 @@ export function Reader({ storyId }: { storyId: string }) {
           duration: userDuration,
           faSpans,
         };
+        showSavedRef.current = false;
+        setShowingPreviousTake(false);
         publishRef.current();
         setGraphSyllable(0);
         const save = new FormData();
@@ -550,7 +562,11 @@ export function Reader({ storyId }: { storyId: string }) {
     const storyId = currentStory.id;
     const sentenceId = current.id;
     if (modelSliceRef.current?.sentenceId !== sentenceId) modelSliceRef.current = null;
-    if (takeSliceRef.current?.sentenceId !== sentenceId) takeSliceRef.current = null;
+    if (sessionTakeRef.current?.sentenceId !== sentenceId) sessionTakeRef.current = null;
+    if (savedTakeRef.current?.sentenceId !== sentenceId) savedTakeRef.current = null;
+    showSavedRef.current = false;
+    setShowingPreviousTake(false);
+    setSavedTakeAvailable(false);
     publishRef.current();
     let cancelled = false;
     void (async () => {
@@ -558,7 +574,10 @@ export function Reader({ storyId }: { storyId: string }) {
         `/api/stories/${storyId}/takes/${encodeURIComponent(sentenceId)}`,
       );
       if (cancelled || sentenceRef.current?.id !== sentenceId) return;
-      if (!response.ok) return;
+      if (!response.ok) {
+        if (!cancelled) setSavedTakeAvailable(false);
+        return;
+      }
       const body = (await response.json()) as {
         audioBase64?: string;
         text?: string;
@@ -577,7 +596,7 @@ export function Reader({ storyId }: { storyId: string }) {
           })
         : null;
       if (cancelled || sentenceRef.current?.id !== sentenceId) return;
-      takeSliceRef.current = {
+      savedTakeRef.current = {
         sentenceId,
         samples: decoded.samples,
         sampleRate: decoded.sampleRate,
@@ -586,6 +605,7 @@ export function Reader({ storyId }: { storyId: string }) {
         duration: body.duration ?? decoded.samples.length / decoded.sampleRate,
         faSpans,
       };
+      if (!cancelled) setSavedTakeAvailable(true);
       publishRef.current();
     })().catch(() => {
       if (!cancelled) setError("Could not load the saved take.");
@@ -594,6 +614,11 @@ export function Reader({ storyId }: { storyId: string }) {
       cancelled = true;
     };
   }, [story?.id, sentence?.id]);
+  const togglePreviousTake = useCallback(() => {
+    showSavedRef.current = !showSavedRef.current;
+    setShowingPreviousTake(showSavedRef.current);
+    publishRef.current();
+  }, []);
   const matchByExpected = useMemo(() => {
     if (!matches) return new Map<number, "ok" | "miss" | "sub">();
     const map = new Map<number, "ok" | "miss" | "sub">();
@@ -643,6 +668,9 @@ export function Reader({ storyId }: { storyId: string }) {
       replayIndex={replayIndex}
       playingTrack={playingTrack}
       hasUserAudio={hasUserAudio}
+      savedTakeAvailable={savedTakeAvailable}
+      showingPreviousTake={showingPreviousTake}
+      togglePreviousTake={togglePreviousTake}
       replaySyllable={(index, alternate) => void replaySyllable(index, alternate)}
       matchByExpected={matchByExpected}
       editing={editing}

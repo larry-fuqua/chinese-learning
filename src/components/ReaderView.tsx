@@ -26,6 +26,9 @@ export type ReaderViewProps = {
   replayIndex: number | null;
   playingTrack: ReplayTrack | null;
   hasUserAudio: boolean;
+  savedTakeAvailable: boolean;
+  showingPreviousTake: boolean;
+  togglePreviousTake: () => void;
   replaySyllable: (index: number, alternate: boolean) => void;
   matchByExpected: Map<number, "ok" | "miss" | "sub">;
   editing: boolean;
@@ -54,6 +57,7 @@ export function ReaderView(p: ReaderViewProps) {
     story, active, selectedWord, pinyinMode, speed, playing, spokenChar,
     recording, busy, error, graph, graphSyllable, playheadT, matchByExpected,
     replayTrack, setReplayTrack, replayIndex, playingTrack, hasUserAudio, replaySyllable,
+    savedTakeAvailable, showingPreviousTake, togglePreviousTake,
     editing, draft, note,
     setActive, setSelectedWord, setDraft, setEditing, setSpeed, setGraphSyllable,
     stopPlayback, playSentence, playStory, toggleRecord, cyclePinyin,
@@ -249,6 +253,10 @@ export function ReaderView(p: ReaderViewProps) {
             playingTrack={playingTrack}
             hasUserAudio={hasUserAudio}
             onReplay={replaySyllable}
+            referenceText={p.sentence.hanzi}
+            savedTakeAvailable={savedTakeAvailable}
+            showingPreviousTake={showingPreviousTake}
+            onTogglePreviousTake={togglePreviousTake}
           />
         ) : (
           <div className="bg-graph px-4 py-3 text-center font-[family-name:var(--font-sans)] text-xs tracking-[0.14em] text-paper/50 uppercase">

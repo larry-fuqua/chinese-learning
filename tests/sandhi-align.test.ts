@@ -7,7 +7,7 @@ import {
   syllableTimesFromChars,
   type OffCase,
 } from "../src/lib/align-audio";
-import { buildSyllablePitches, sliceContour } from "../src/lib/pitch";
+import { buildSyllablePitches, classifyTone, sliceContour } from "../src/lib/pitch";
 import {
   contourVerdict,
   pitchTrackNote,
@@ -95,6 +95,29 @@ test("the notes line follows the model or yours toggle", () => {
     pitchTrackNote({ track: "yours", ...shared, hasUserTake: false }),
     "",
   );
+});
+
+test("a falling drawn contour is not called a rising match", () => {
+  const contour = [-0.76, -1.17, -1.47, -2.62, -2.84, -2.84, -2.84, -2.81, -2.72, -2.72];
+  assert.equal(classifyTone(contour), 4);
+  const note = pitchTrackNote({
+    track: "model",
+    hasUserTake: false,
+    expectedTone: 2,
+    heardTone: null,
+    modelHeardTone: 2,
+    pExpected: null,
+    modelPExpected: 0.84,
+    userStart: null,
+    start: 3.52,
+    end: 3.79,
+    shapeTone: classifyTone(contour),
+  });
+  assert.match(note, /model 4th/);
+  assert.match(note, /falling/);
+  assert.match(note, /shape is off/);
+  assert.doesNotMatch(note, /shape matches/);
+  assert.doesNotMatch(note, /model 2nd/);
 });
 
 test("syllable pitches use the spoken tone and stay inside the timestamp", () => {

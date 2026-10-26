@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { test } from "node:test";
-import { octaveFix, sliceContour, strokeWithGaps } from "../src/lib/pitch";
+import { buildSyllablePitches, classifyTone, extractPitch, octaveFix, sliceContour, strokeWithGaps } from "../src/lib/pitch";
+import { pitchTrackNote } from "../src/lib/sandhi";
 import type { PitchPoint } from "../src/lib/types";
 
 function burst(start: number, end: number, hz: number): PitchPoint[] {
@@ -81,6 +84,56 @@ test("an interior pitch hole is filled and silence outside the run stays empty",
   });
   assert.ok(first > 0 && last < contour.length - 1 && last > first);
   for (let i = first; i <= last; i++) assert.notEqual(contour[i], null);
+});
+
+test("学 on the AI voice is graded from the contour that is drawn", () => {
+  const dir = path.join(process.cwd(), "tests/fixtures/slice");
+  const meta = JSON.parse(fs.readFileSync(path.join(dir, "ch1_01_P.json"), "utf8")) as {
+    sampleRate: number;
+    windows_owned: [string, number, number][];
+  };
+  const buf = fs.readFileSync(path.join(dir, "ch1_01_P.f32"));
+  const samples = new Float32Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+  const syllables = buildSyllablePitches({
+    words: [
+      { hanzi: "果果", pinyin: "Guǒguo" },
+      { hanzi: "今年", pinyin: "jīnnián" },
+      { hanzi: "十三", pinyin: "shísān" },
+      { hanzi: "岁", pinyin: "suì" },
+      { hanzi: "是", pinyin: "shì" },
+      { hanzi: "一名", pinyin: "yì míng" },
+      { hanzi: "中学生", pinyin: "zhōngxuéshēng" },
+      { hanzi: "读", pinyin: "dú" },
+      { hanzi: "中学", pinyin: "zhōngxué" },
+      { hanzi: "一年级", pinyin: "yì nián jí" },
+    ],
+    refTimes: meta.windows_owned.map(([hanzi, start, end]) => ({ hanzi, start, end })),
+    userTimes: [],
+    refPitch: extractPitch(samples, meta.sampleRate),
+    userPitch: [],
+  });
+  const xue = syllables[11];
+  assert.equal(xue?.hanzi, "学");
+  assert.equal(xue?.expectedTone, 2);
+  const voiced = (xue?.refSemitones ?? []).filter((value): value is number => value != null);
+  assert.ok(voiced.length >= 4);
+  assert.ok(voiced[voiced.length - 1]! < voiced[0]! - 1, voiced.join(","));
+  assert.equal(classifyTone(xue?.refSemitones ?? []), 4);
+  const note = pitchTrackNote({
+    track: "model",
+    hasUserTake: false,
+    expectedTone: xue?.expectedTone ?? 0,
+    heardTone: null,
+    modelHeardTone: xue?.modelHeardTone ?? null,
+    pExpected: null,
+    modelPExpected: xue?.modelPExpected ?? null,
+    userStart: null,
+    start: xue?.start ?? 0,
+    end: xue?.end ?? 0,
+    shapeTone: classifyTone(xue?.refSemitones ?? []),
+  });
+  assert.match(note, /shape is off/);
+  assert.match(note, /falling/);
 });
 
 function round(value: number): number {
