@@ -3,8 +3,12 @@ import { test } from "node:test";
 import {
   binCenterX,
   characterPxPerSec,
+  LABEL_MIN_GAP,
+  laneTime,
+  laneX,
   pitchPlotLayout,
   sentencePxPerSec,
+  separateLabelCenters,
   sharedPitchAxis,
   slotWidth,
   visibleTimeSpan,
@@ -64,14 +68,73 @@ test("the pitch axis fits the drawn range with padding and is shared", () => {
   assert.ok(both.min < -3 && both.max > 4);
 });
 
-test("character labels sit outside every pitch band", () => {
+test("each lane keeps its own labels clear of its traces", () => {
   const one = pitchPlotLayout({ width: 800, height: 176, showUser: false });
-  assert.ok(one.ref.top + one.ref.height <= one.labels.top);
+  assert.equal(one.user, null);
+  assert.equal(one.userLabels, null);
+  assert.ok(one.ref.top + one.ref.height <= one.refLabels.top);
   assert.ok(one.ref.height > 100);
   assert.equal(one.gutter + one.plotWidth, 800);
-  const two = pitchPlotLayout({ width: 800, height: 248, showUser: true });
-  assert.ok(two.user);
-  assert.ok(two.ref.top + two.ref.height <= two.user.top);
-  assert.ok(two.user.top + two.user.height <= two.labels.top);
-  assert.ok(two.ref.height > 80 && two.user.height > 80);
+  const two = pitchPlotLayout({ width: 800, height: 290, showUser: true });
+  assert.ok(two.user && two.userLabels);
+  assert.ok(two.ref.top + two.ref.height <= two.refLabels.top);
+  assert.ok(two.refLabels.top + two.refLabels.height <= two.user.top);
+  assert.ok(two.user.top + two.user.height <= two.userLabels.top);
+  assert.ok(two.ref.height > 90 && two.user.height > 90);
+  assert.ok(Math.abs(two.ref.height - two.user.height) < 1e-9);
+});
+
+test("each voice fits its own sentence across the full plot width", () => {
+  const width = 300;
+  const left = 36;
+  const model = laneTime({ starts: [0.2, 1.0], ends: [0.5, 1.4] });
+  const user = laneTime({ starts: [1.0, 8.0], ends: [1.6, 9.2] });
+  assert.equal(model.origin, 0.2);
+  assert.ok(Math.abs(model.span - 1.2) < 1e-9);
+  assert.equal(user.origin, 1.0);
+  assert.ok(Math.abs(user.span - 8.2) < 1e-9);
+  assert.ok(Math.abs(laneX(model.origin, model, left, width) - left) < 1e-9);
+  assert.ok(Math.abs(laneX(model.origin + model.span, model, left, width) - (left + width)) < 1e-9);
+  assert.ok(Math.abs(laneX(user.origin, user, left, width) - left) < 1e-9);
+  assert.ok(Math.abs(laneX(user.origin + user.span, user, left, width) - (left + width)) < 1e-9);
+  const modelSlot = laneX(0.5, model, left, width) - laneX(0.2, model, left, width);
+  const userSlot = laneX(1.6, user, left, width) - laneX(1.0, user, left, width);
+  assert.ok(Math.abs(modelSlot - (0.3 / 1.2) * width) < 1e-6);
+  assert.ok(Math.abs(userSlot - (0.6 / 8.2) * width) < 1e-6);
+  assert.ok(modelSlot > userSlot);
+  const modelLate = laneX(1.0, model, left, width);
+  assert.ok(modelLate > left + width * 0.5);
+  assert.equal(laneTime({ starts: [], ends: [] }).span, 0.2);
+});
+
+test("close labels step aside and spaced labels stay on their slices", () => {
+  const nudged = separateLabelCenters({
+    ideal: [100, 108],
+    widths: [14, 14],
+    left: 0,
+    right: 400,
+    minGap: LABEL_MIN_GAP,
+  });
+  assert.ok(Math.abs(nudged[0]! - 100) < 1e-9);
+  assert.ok(nudged[1]! - nudged[0]! >= 14 + LABEL_MIN_GAP - 1e-9);
+  const spaced = separateLabelCenters({
+    ideal: [40, 200],
+    widths: [14, 14],
+    left: 0,
+    right: 400,
+    minGap: LABEL_MIN_GAP,
+  });
+  assert.deepEqual(spaced, [40, 200]);
+  const packed = separateLabelCenters({
+    ideal: [10, 10, 10, 10, 10],
+    widths: [20, 20, 20, 20, 20],
+    left: 0,
+    right: 100,
+    minGap: 8,
+  });
+  assert.ok(packed[0]! >= 10 - 1e-9);
+  assert.ok(packed[4]! <= 90 + 1e-9);
+  for (let i = 1; i < packed.length; i++) {
+    assert.ok(packed[i]! - packed[i - 1]! >= 20 - 1e-6);
+  }
 });

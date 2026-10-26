@@ -5,10 +5,13 @@ import { canonicalTone, classifyTone, strokeWithGaps } from "@/lib/pitch";
 import {
   binCenterX,
   characterPxPerSec,
+  LABEL_MIN_GAP,
+  laneTime,
+  laneX,
   pitchPlotLayout,
   semitoneToY,
+  separateLabelCenters,
   sharedPitchAxis,
-  visibleTimeSpan,
   type PitchAxis,
   type PlotBand,
 } from "@/lib/pitch-scale";
@@ -301,15 +304,25 @@ function SentenceCanvas({
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, width, height);
 
-      const ends: number[] = [lastTime(refPitch)];
+      const modelStarts: number[] = [];
+      const modelEnds: number[] = [];
+      const userStarts: number[] = [];
+      const userEnds: number[] = [];
       for (const syllable of syllables) {
-        if (syllable.end > 0) ends.push(syllable.end);
-        if (showUser && syllable.userEnd != null) ends.push(syllable.userEnd);
+        if (syllable.end > syllable.start) {
+          modelStarts.push(syllable.start);
+          modelEnds.push(syllable.end);
+        }
+        if (showUser && syllable.userStart != null && syllable.userEnd != null) {
+          userStarts.push(syllable.userStart);
+          userEnds.push(syllable.userEnd);
+        }
       }
-      if (showUser) ends.push(lastTime(userPitch));
-      const span = visibleTimeSpan(ends);
+      const modelLane = laneTime({ starts: modelStarts, ends: modelEnds });
+      const userLane = laneTime({ starts: userStarts, ends: userEnds });
       const layout = pitchPlotLayout({ width, height, showUser });
-      const xOf = (t: number) => layout.gutter + (t / span) * layout.plotWidth;
+      const xModel = (t: number) => laneX(t, modelLane, layout.gutter, layout.plotWidth);
+      const xUser = (t: number) => laneX(t, userLane, layout.gutter, layout.plotWidth);
       const family = canvasFont();
 
       drawGrid(ctx, layout.gutter, layout.plotWidth, layout.ref);
@@ -327,18 +340,21 @@ function SentenceCanvas({
         );
       }
 
+      const modelLabels: LabelSlot[] = [];
+      const userLabels: LabelSlot[] = [];
       syllables.forEach((s, i) => {
         if (s.end > s.start) {
-          const x0 = xOf(s.start);
-          const x1 = xOf(s.end);
+          const x0 = xModel(s.start);
+          const x1 = xModel(s.end);
           paintSlot(ctx, x0, x1, layout.ref, i === selected, replayIndex === i && playingTrack === "model");
           clipDraw(ctx, layout.gutter, layout.ref, layout.plotWidth, () => {
             drawLineInSlot(ctx, s.refSemitones, x0, x1, layout.ref, "#e8c27a", 2.2, axis);
           });
+          modelLabels.push({ index: i, hanzi: s.hanzi, x0, x1 });
         }
         if (showUser && s.userStart != null && s.userEnd != null && s.userEnd > s.userStart && layout.user) {
-          const ux0 = xOf(s.userStart);
-          const ux1 = xOf(s.userEnd);
+          const ux0 = xUser(s.userStart);
+          const ux1 = xUser(s.userEnd);
           paintSlot(
             ctx,
             ux0,
@@ -351,21 +367,25 @@ function SentenceCanvas({
           clipDraw(ctx, layout.gutter, layout.user, layout.plotWidth, () => {
             drawLineInSlot(ctx, s.userSemitones, ux0, ux1, layout.user!, "#f3ead8", 2.2, axis);
           });
-        }
-        const labelStart = replayTrack === "yours" && s.userStart != null ? s.userStart : s.start;
-        const labelEnd = replayTrack === "yours" && s.userEnd != null ? s.userEnd : s.end;
-        if (labelEnd > labelStart) {
-          drawLabel(ctx, s.hanzi, xOf(labelStart), xOf(labelEnd), layout.labels, family.hanzi, i === selected);
+          userLabels.push({ index: i, hanzi: s.hanzi, x0: ux0, x1: ux1 });
         }
       });
+      const plotLeft = layout.gutter;
+      const plotRight = layout.gutter + layout.plotWidth;
+      drawLaneLabels(ctx, modelLabels, layout.refLabels, family.hanzi, selected, plotLeft, plotRight);
+      if (layout.userLabels) {
+        drawLaneLabels(ctx, userLabels, layout.userLabels, family.hanzi, selected, plotLeft, plotRight);
+      }
 
       if (playheadT != null) {
-        const x = xOf(playheadT);
+        const onUser = playingTrack === "yours" && layout.user;
+        const band = onUser ? layout.user! : layout.ref;
+        const x = onUser ? xUser(playheadT) : xModel(playheadT);
         ctx.strokeStyle = "#c44a32";
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.moveTo(x, layout.ref.top);
-        ctx.lineTo(x, (layout.user ?? layout.ref).top + (layout.user ?? layout.ref).height);
+        ctx.moveTo(x, band.top);
+        ctx.lineTo(x, band.top + band.height);
         ctx.stroke();
       }
     };
@@ -391,7 +411,7 @@ function SentenceCanvas({
     <canvas
       ref={canvasRef}
       className="w-full min-w-0 flex-1"
-      style={{ height: showUser ? 248 : 176 }}
+      style={{ height: showUser ? 290 : 176 }}
       aria-label="Sentence pitch contour"
     />
   );
@@ -524,34 +544,50 @@ function clipDraw(
   ctx.restore();
 }
 
-function drawLabel(
+type LabelSlot = { index: number; hanzi: string; x0: number; x1: number };
+
+function drawLaneLabels(
   ctx: CanvasRenderingContext2D,
-  hanzi: string,
-  x0: number,
-  x1: number,
+  items: LabelSlot[],
   band: PlotBand,
   family: string,
-  selected: boolean,
+  selected: number,
+  left: number,
+  right: number,
 ) {
-  const width = Math.max(1, x1 - x0);
+  if (!items.length || band.height < 4) return;
   ctx.save();
   ctx.beginPath();
-  ctx.rect(x0, band.top, width, band.height);
+  ctx.rect(left, band.top, Math.max(1, right - left), band.height);
   ctx.clip();
-  if (selected) {
-    ctx.fillStyle = "rgba(243, 234, 216, 0.16)";
-    ctx.fillRect(x0, band.top, width, band.height);
-  }
-  ctx.fillStyle = "rgba(243, 234, 216, 0.78)";
   ctx.font = `14px ${family}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(hanzi, x0 + width / 2, band.top + band.height / 2);
+  const widths = items.map((item) => Math.max(12, ctx.measureText(item.hanzi).width));
+  const centers = separateLabelCenters({
+    ideal: items.map((item) => (item.x0 + item.x1) / 2),
+    widths,
+    left,
+    right,
+    minGap: LABEL_MIN_GAP,
+  });
+  const y = band.top + band.height / 2;
+  items.forEach((item, i) => {
+    if (item.index !== selected) return;
+    ctx.fillStyle = "rgba(243, 234, 216, 0.16)";
+    ctx.fillRect(item.x0, band.top, Math.max(2, item.x1 - item.x0), band.height);
+  });
+  items.forEach((item, i) => {
+    const center = centers[i]!;
+    const width = widths[i]!;
+    if (item.index === selected) {
+      ctx.fillStyle = "rgba(243, 234, 216, 0.22)";
+      ctx.fillRect(center - width / 2 - 1, band.top, width + 2, band.height);
+    }
+    ctx.fillStyle = item.index === selected ? "rgba(243, 234, 216, 0.95)" : "rgba(243, 234, 216, 0.78)";
+    ctx.fillText(item.hanzi, center, y);
+  });
   ctx.restore();
-}
-
-function lastTime(points: PitchPoint[]): number {
-  return points.length ? points[points.length - 1].t : 0;
 }
 
 function drawLineInSlot(

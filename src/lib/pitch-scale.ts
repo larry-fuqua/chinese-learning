@@ -77,15 +77,16 @@ export type PitchPlotLayout = {
   gutter: number;
   plotWidth: number;
   ref: PlotBand;
+  refLabels: PlotBand;
   user: PlotBand | null;
-  labels: PlotBand;
+  userLabels: PlotBand | null;
 };
 
 const LABEL_H = 22;
 const LABEL_GAP = 6;
-const BAND_GAP = 8;
+const BAND_GAP = 10;
 
-/** Character labels sit in their own band under the plot. Traces never enter it. */
+/** Each lane's character labels sit under that lane. Traces never enter a label band. */
 export function pitchPlotLayout(opts: {
   width: number;
   height: number;
@@ -93,26 +94,112 @@ export function pitchPlotLayout(opts: {
 }): PitchPlotLayout {
   const gutter = opts.showUser ? 36 : 4;
   const plotWidth = Math.max(1, opts.width - gutter);
-  const labels: PlotBand = { top: Math.max(0, opts.height - LABEL_H), height: LABEL_H };
-  const plotBottom = Math.max(0, labels.top - LABEL_GAP);
   if (!opts.showUser) {
+    const refLabels: PlotBand = { top: Math.max(0, opts.height - LABEL_H), height: LABEL_H };
+    const plotBottom = Math.max(0, refLabels.top - LABEL_GAP);
     return {
       gutter,
       plotWidth,
       ref: { top: 2, height: Math.max(1, plotBottom - 2) },
+      refLabels,
       user: null,
-      labels,
+      userLabels: null,
     };
   }
-  const inner = Math.max(2, plotBottom - 2 - BAND_GAP);
-  const band = inner / 2;
-  return {
-    gutter,
-    plotWidth,
-    ref: { top: 2, height: band },
-    user: { top: 2 + band + BAND_GAP, height: band },
-    labels,
-  };
+  const chrome = 2 + LABEL_GAP + LABEL_H + BAND_GAP + LABEL_GAP + LABEL_H + 2;
+  const band = Math.max(1, (opts.height - chrome) / 2);
+  const ref: PlotBand = { top: 2, height: band };
+  const refLabels: PlotBand = { top: ref.top + ref.height + LABEL_GAP, height: LABEL_H };
+  const user: PlotBand = { top: refLabels.top + refLabels.height + BAND_GAP, height: band };
+  const userLabels: PlotBand = { top: user.top + user.height + LABEL_GAP, height: LABEL_H };
+  return { gutter, plotWidth, ref, refLabels, user, userLabels };
+}
+
+export type LaneTime = { origin: number; span: number };
+
+/**
+ * Fit one voice to the plot. The span runs from that voice's first slice
+ * to its last, so the sentence fills the lane and each slice keeps its
+ * share of that voice's own duration. The other voice's clock is ignored.
+ */
+export function laneTime(opts: {
+  starts: readonly number[];
+  ends: readonly number[];
+}): LaneTime {
+  let origin = Infinity;
+  let end = -Infinity;
+  const count = Math.min(opts.starts.length, opts.ends.length);
+  for (let i = 0; i < count; i++) {
+    const start = opts.starts[i]!;
+    const stop = opts.ends[i]!;
+    if (!Number.isFinite(start) || !Number.isFinite(stop) || !(stop > start)) continue;
+    if (start < origin) origin = start;
+    if (stop > end) end = stop;
+  }
+  if (!(end > origin)) return { origin: 0, span: 0.2 };
+  return { origin, span: end - origin };
+}
+
+export function laneX(time: number, lane: LaneTime, plotLeft: number, plotWidth: number): number {
+  return plotLeft + ((time - lane.origin) / (lane.span || 1)) * plotWidth;
+}
+
+/** Preferred empty pixels between character labels. */
+export const LABEL_MIN_GAP = 12;
+
+/**
+ * Keep labels readable when two slices sit close together.
+ * Centers start on the slice midpoint. A label steps aside only far enough
+ * to leave a gap, and it stays inside the plot. Slice widths are untouched.
+ */
+export function separateLabelCenters(opts: {
+  ideal: readonly number[];
+  widths: readonly number[];
+  left: number;
+  right: number;
+  minGap: number;
+}): number[] {
+  const n = opts.ideal.length;
+  if (n === 0) return [];
+  const widths = Array.from({ length: n }, (_, i) => Math.max(1, opts.widths[i] ?? 1));
+  const available = Math.max(1, opts.right - opts.left);
+  const content = widths.reduce((sum, width) => sum + width, 0);
+  const gaps = Math.max(0, n - 1);
+  let gap = Math.max(0, opts.minGap);
+  if (gaps > 0 && content + gap * gaps > available) {
+    gap = Math.max(0, (available - content) / gaps);
+  }
+  const placed = new Array<number>(n);
+  for (let i = 0; i < n; i++) {
+    const half = widths[i]! / 2;
+    const lo = opts.left + half;
+    const hi = opts.right - half;
+    const ideal = opts.ideal[i]!;
+    placed[i] = hi >= lo ? Math.min(hi, Math.max(lo, ideal)) : (opts.left + opts.right) / 2;
+  }
+  const minCenter = (i: number) => placed[i - 1]! + widths[i - 1]! / 2 + gap + widths[i]! / 2;
+  const maxCenter = (i: number) => placed[i + 1]! - widths[i + 1]! / 2 - gap - widths[i]! / 2;
+  for (let i = 1; i < n; i++) {
+    const next = minCenter(i);
+    if (placed[i]! < next) placed[i] = next;
+  }
+  const lastHi = opts.right - widths[n - 1]! / 2;
+  if (placed[n - 1]! > lastHi) {
+    placed[n - 1] = lastHi;
+    for (let i = n - 2; i >= 0; i--) {
+      const prev = maxCenter(i);
+      if (placed[i]! > prev) placed[i] = prev;
+    }
+  }
+  const firstLo = opts.left + widths[0]! / 2;
+  if (placed[0]! < firstLo) {
+    placed[0] = firstLo;
+    for (let i = 1; i < n; i++) {
+      const next = minCenter(i);
+      if (placed[i]! < next) placed[i] = next;
+    }
+  }
+  return placed;
 }
 
 /** Time at the center of an evenly spaced bin. The same milliseconds per pixel in every slot. */
