@@ -4,8 +4,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, test } from "node:test";
+import { createHash } from "node:crypto";
 import { DELETE } from "../src/app/api/tts/cache/route";
 import { POST } from "../src/app/api/tts/route";
+import { ttsCacheKey } from "../src/lib/tts-key";
 import { API_KEY } from "./env";
 
 let dir = "";
@@ -65,6 +67,55 @@ test("TTS caches audio on disk and does not send the xAI key back", async () => 
 
   const files = await fs.readdir(path.join(dir, "audio"));
   assert.equal(files.length, 1);
+});
+
+test("a contextual reading caches separately and is not sent as the spoken text", async () => {
+  let calls = 0;
+  globalThis.fetch = async (input, init) => {
+    calls += 1;
+    const sent = JSON.parse(String(init?.body)) as { text?: string; reading?: string };
+    assert.equal(sent.text, "学");
+    assert.equal(sent.reading, undefined);
+    assert.equal(String(input).includes("test-xai-key-do-not-leak"), false);
+    return new Response(
+      JSON.stringify({ audio: "UklHRmVhZA==", duration: 0.4 }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  };
+
+  const withReading = await POST(
+    new Request("http://localhost/api/tts", {
+      method: "POST",
+      headers: { authorization: `Bearer ${API_KEY}`, "content-type": "application/json" },
+      body: JSON.stringify({ text: "学", speed: 0.85, reading: "xué" }),
+    }),
+  );
+  assert.equal(withReading.status, 200);
+  const again = await POST(
+    new Request("http://localhost/api/tts", {
+      method: "POST",
+      headers: { authorization: `Bearer ${API_KEY}`, "content-type": "application/json" },
+      body: JSON.stringify({ text: "学", speed: 0.85, reading: "xué" }),
+    }),
+  );
+  assert.equal(again.status, 200);
+  assert.equal(calls, 1);
+
+  const otherTone = await POST(
+    new Request("http://localhost/api/tts", {
+      method: "POST",
+      headers: { authorization: `Bearer ${API_KEY}`, "content-type": "application/json" },
+      body: JSON.stringify({ text: "学", speed: 0.85, reading: "xuě" }),
+    }),
+  );
+  assert.equal(otherTone.status, 200);
+  assert.equal(calls, 2);
+
+  const plain = createHash("sha256").update(ttsCacheKey("学", 0.85)).digest("hex");
+  const toned = createHash("sha256").update(ttsCacheKey("学", 0.85, "xué")).digest("hex");
+  const names = await fs.readdir(path.join(dir, "audio"));
+  assert.equal(names.includes(`${plain}.json`), false);
+  assert.equal(names.includes(`${toned}.json`), true);
 });
 
 test("DELETE /api/tts/cache removes audio json and leaves stories", async () => {

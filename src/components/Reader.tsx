@@ -5,11 +5,14 @@ import { fetchAlignment } from "@/lib/align-client";
 import type { AlignSpan } from "@/lib/align-audio";
 import { apiFetch } from "@/lib/api-fetch";
 import { playBuffer, playSlice, startRecorder, type Recorder } from "@/lib/audio";
-import { buildSyllablePitches, buildTakeGraph } from "@/lib/pitch";
+import { buildSyllablePitches, buildTakeGraph, extractPitch, sliceContour, speakerStats } from "@/lib/pitch";
+import { practiceFeedback } from "@/lib/practice-graph";
+import { gradeContour } from "@/lib/tone-model";
+import { PRACTICE_TTS_SPEED } from "@/lib/tts-key";
 import { visibleUserTake } from "@/lib/take-display";
 import { bufferToBase64, decodeToMono } from "@/lib/wav";
 import { getBook, getStory, saveStory, upsertNote } from "@/lib/storage";
-import { compareHanzi, glueOrphanPunct, isHan } from "@/lib/text";
+import { compareHanzi, glueOrphanPunct, isHan, spokenReading } from "@/lib/text";
 import type { CharSpan } from "@/lib/align-audio";
 import type {
   Note,
@@ -31,6 +34,14 @@ import {
 import { ReaderView } from "@/components/ReaderView";
 import type { ReplayTrack } from "@/components/PitchGraph";
 const PINYIN_CYCLE: PinyinMode[] = ["off", "word", "line", "all"];
+
+type PracticeClip = {
+  audio?: ArrayBuffer;
+  semitones: (number | null)[];
+  duration: number;
+  note: string;
+};
+
 export function Reader({ storyId }: { storyId: string }) {
   const [story, setStory] = useState<Story | null>(null);
   const [missing, setMissing] = useState(false);
@@ -55,6 +66,18 @@ export function Reader({ storyId }: { storyId: string }) {
   const [matches, setMatches] = useState<("ok" | "miss" | "sub" | "extra")[] | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Note | null>(null);
+  const [usage, setUsage] = useState<{ key: string; note: Note | null; pending: boolean }>({
+    key: "",
+    note: null,
+    pending: false,
+  });
+  const [practiceView, setPracticeView] = useState<{
+    key: string;
+    model: PracticeClip | null;
+    user: PracticeClip | null;
+  } | null>(null);
+  const [practiceBusy, setPracticeBusy] = useState<"" | "hear" | "recite">("");
+  const [practiceRecording, setPracticeRecording] = useState(false);
   const [chapterNav, setChapterNav] = useState<{
     bookTitle?: string;
     previous?: { id: string; label: string };
@@ -62,6 +85,9 @@ export function Reader({ storyId }: { storyId: string }) {
   }>({});
   const abortRef = useRef<AbortController | null>(null);
   const recorderRef = useRef<Recorder | null>(null);
+  const practiceRecorderRef = useRef<Recorder | null>(null);
+  const practiceModelRef = useRef(new Map<string, PracticeClip>());
+  const practiceUserRef = useRef(new Map<string, PracticeClip>());
   const pitchCache = useRef<Map<string, PitchPoint[]>>(new Map());
   const playGen = useRef(0);
   const modelAudioRef = useRef<ArrayBuffer | null>(null);
@@ -180,7 +206,12 @@ export function Reader({ storyId }: { storyId: string }) {
   const sentence = story?.sentences[active];
   storyRef.current = story;
   sentenceRef.current = sentence;
-  const note = selectedWord && story ? story.notes[selectedWord] : undefined;
+  const storyNote = selectedWord && story ? story.notes[selectedWord] : undefined;
+  const usageKey = sentence && selectedWord ? `${sentence.id}|${selectedWord}` : "";
+  const usageNote = usage.key === usageKey ? usage.note : null;
+  const definitionPending = usage.key === usageKey && usage.pending;
+  const note = usageNote ?? (!definitionPending && storyNote?.gloss ? storyNote : undefined);
+  const panelPinyin = note?.pinyin || draft?.pinyin || storyNote?.pinyin || "";
   const cyclePinyin = useCallback(() => {
     setPinyinMode((mode) => {
       const i = PINYIN_CYCLE.indexOf(mode);
@@ -356,6 +387,10 @@ export function Reader({ storyId }: { storyId: string }) {
     }
   }, [playSentence, story]);
   const toggleRecord = useCallback(async () => {
+    if (practiceRecording) {
+      setError("Finish the character recite first.");
+      return;
+    }
     if (!story || !sentence) return;
     if (recording && recorderRef.current) {
       setRecording(false);
@@ -446,14 +481,249 @@ export function Reader({ storyId }: { storyId: string }) {
     } catch {
       setError("Microphone permission is needed to recite.");
     }
-  }, [ensureTts, recording, sentence, speed, story]);
-  async function saveNote() {
-    if (!story || !selectedWord || !draft) return;
-    const updated = await upsertNote(story.id, selectedWord, {
-      ...draft,
-      source: "user",
+  }, [ensureTts, practiceRecording, recording, sentence, speed, story]);
+  const selectWord = useCallback(
+    (index: number, word: Word) => {
+      const chosen = storyRef.current?.sentences[index];
+      setActive(index);
+      setSelectedWord(word.hanzi);
+      setDraft(storyRef.current?.notes[word.hanzi] ?? emptyNote(word));
+      setEditing(false);
+      if (chosen) setUsage({ key: `${chosen.id}|${word.hanzi}`, note: null, pending: true });
+    },
+    [],
+  );
+  useEffect(() => {
+    if (!story || !sentence || !selectedWord) return;
+    const key = `${sentence.id}|${selectedWord}`;
+    const word = sentence.words.find((item) => item.hanzi === selectedWord);
+    let cancel = false;
+    void (async () => {
+      try {
+        const response = await apiFetch(`/api/stories/${story.id}/definitions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sentenceId: sentence.id,
+            hanzi: selectedWord,
+            pinyin: word?.pinyin || "",
+          }),
+        });
+        const body = (await response.json()) as {
+          error?: string;
+          pinyin?: string;
+          gloss?: string;
+          usage?: string;
+          source?: string;
+        };
+        if (cancel) return;
+        if (!response.ok) {
+          setUsage({ key, note: null, pending: false });
+          if (response.status === 502 || response.status === 503) {
+            setError(body.error || "Could not write a definition.");
+          }
+          return;
+        }
+        const source = body.source === "user" || body.source === "sample" ? body.source : "ai";
+        setUsage({
+          key,
+          pending: false,
+          note: {
+            pinyin: body.pinyin || word?.pinyin || "",
+            gloss: body.gloss || "",
+            usage: body.usage || "",
+            source,
+          },
+        });
+      } catch {
+        if (!cancel) setUsage({ key, note: null, pending: false });
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [story, sentence, selectedWord]);
+  useEffect(() => {
+    const syl = graph?.syllables[graphSyllable];
+    if (!sentence || !syl) {
+      setPracticeView(null);
+      return;
+    }
+    const reading = spokenReading(syl.pinyin, syl.expectedTone);
+    const key = `${sentence.id}|${graphSyllable}|${reading}`;
+    setPracticeView({
+      key,
+      model: practiceModelRef.current.get(key) ?? null,
+      user: practiceUserRef.current.get(key) ?? null,
     });
+  }, [graph, graphSyllable, sentence]);
+  const hearPractice = useCallback(async () => {
+    const current = sentenceRef.current;
+    const toneGraph = graph;
+    const index = graphSyllable;
+    const syl = toneGraph?.syllables[index];
+    if (!current || !syl || practiceBusy || practiceRecording || recording) return;
+    const reading = spokenReading(syl.pinyin, syl.expectedTone);
+    const key = `${current.id}|${index}|${reading}`;
+    const cached = practiceModelRef.current.get(key);
+    if (cached?.audio) {
+      setPracticeView({
+        key,
+        model: cached,
+        user: practiceUserRef.current.get(key) ?? null,
+      });
+      try {
+        await playBuffer(cached.audio);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Playback failed.");
+      }
+      return;
+    }
+    setPracticeBusy("hear");
+    setError("");
+    try {
+      const response = await apiFetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: syl.hanzi, speed: PRACTICE_TTS_SPEED, reading }),
+      });
+      const body = (await response.json()) as { error?: string; audioBase64?: string };
+      if (!response.ok || !body.audioBase64) {
+        throw new Error(body.error || "Could not speak this character.");
+      }
+      const audio = base64ToBuffer(body.audioBase64);
+      const decoded = await decodeToMono(audio);
+      const duration = decoded.samples.length / decoded.sampleRate;
+      const points = extractPitch(decoded.samples, decoded.sampleRate);
+      const semitones = sliceContour(points, 0, duration);
+      const voiced = semitones.some((value) => value != null);
+      const stats = speakerStats(points);
+      const graded = gradeContour(semitones, stats.rangeSt, duration, 0, syl.expectedTone);
+      const clip: PracticeClip = {
+        audio,
+        semitones,
+        duration,
+        note: voiced
+          ? practiceFeedback({
+              who: "model",
+              expectedTone: syl.expectedTone,
+              heardTone: graded.tone,
+              pExpected: graded.pExpected,
+              contour: semitones,
+            })
+          : "",
+      };
+      practiceModelRef.current.set(key, clip);
+      setPracticeView({
+        key,
+        model: clip,
+        user: practiceUserRef.current.get(key) ?? null,
+      });
+      await playBuffer(audio);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not speak this character.");
+    } finally {
+      setPracticeBusy("");
+    }
+  }, [graph, graphSyllable, practiceBusy, practiceRecording, recording]);
+  const recitePractice = useCallback(async () => {
+    const current = sentenceRef.current;
+    const storyNow = storyRef.current;
+    const toneGraph = graph;
+    const index = graphSyllable;
+    const syl = toneGraph?.syllables[index];
+    if (!current || !storyNow || !syl) return;
+    if (recording) {
+      setError("Finish the sentence recite first.");
+      return;
+    }
+    if (practiceRecording && practiceRecorderRef.current) {
+      setPracticeRecording(false);
+      setPracticeBusy("recite");
+      try {
+        const take = await practiceRecorderRef.current.stop();
+        practiceRecorderRef.current = null;
+        const duration = take.samples.length / take.sampleRate;
+        const points = extractPitch(take.samples, take.sampleRate);
+        const semitones = sliceContour(points, 0, Math.max(duration, 0.01));
+        const stats = speakerStats(points);
+        const graded = gradeContour(semitones, stats.rangeSt, duration, 0, syl.expectedTone);
+        const reading = spokenReading(syl.pinyin, syl.expectedTone);
+        const key = `${current.id}|${index}|${reading}`;
+        const clip: PracticeClip = {
+          semitones,
+          duration,
+          note: practiceFeedback({
+            who: "yours",
+            expectedTone: syl.expectedTone,
+            heardTone: graded.tone,
+            pExpected: graded.pExpected,
+            contour: semitones,
+          }),
+        };
+        practiceUserRef.current.set(key, clip);
+        setPracticeView({
+          key,
+          model: practiceModelRef.current.get(key) ?? null,
+          user: clip,
+        });
+        const save = new FormData();
+        save.append("file", take.wav, "practice.wav");
+        save.append(
+          "stt",
+          JSON.stringify({
+            text: syl.hanzi,
+            duration,
+            sampleRate: take.sampleRate,
+            words: [{ text: syl.hanzi, start: 0, end: duration }],
+          }),
+        );
+        const saved = await apiFetch(
+          `/api/stories/${storyNow.id}/practice/${encodeURIComponent(current.id)}/${index}`,
+          { method: "PUT", body: save },
+        );
+        if (!saved.ok) {
+          const errBody = (await saved.json()) as { error?: string };
+          throw new Error(errBody.error || "Could not save this take.");
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Recite failed.");
+      } finally {
+        setPracticeBusy("");
+      }
+      return;
+    }
+    if (practiceBusy) return;
+    setError("");
+    try {
+      practiceRecorderRef.current = await startRecorder();
+      setPracticeRecording(true);
+    } catch {
+      setError("Microphone permission is needed to recite.");
+    }
+  }, [graph, graphSyllable, practiceBusy, practiceRecording, recording]);
+  async function saveNote() {
+    if (!story || !sentence || !selectedWord || !draft) return;
+    const saved: Note = { ...draft, source: "user" };
+    const updated = await upsertNote(story.id, selectedWord, saved);
     if (updated) setStory(updated);
+    const response = await apiFetch(`/api/stories/${story.id}/definitions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sentenceId: sentence.id,
+        hanzi: selectedWord,
+        pinyin: saved.pinyin,
+        gloss: saved.gloss,
+        usage: saved.usage,
+        save: true,
+      }),
+    });
+    if (!response.ok) {
+      const errBody = (await response.json().catch(() => ({}))) as { error?: string };
+      setError(errBody.error || "Could not save this note.");
+    }
+    setUsage({ key: `${sentence.id}|${selectedWord}`, note: saved, pending: false });
     setEditing(false);
   }
   async function regroupWords() {
@@ -676,8 +946,10 @@ export function Reader({ storyId }: { storyId: string }) {
       editing={editing}
       draft={draft}
       note={note}
+      pinyin={panelPinyin}
+      definitionPending={definitionPending}
       setActive={setActive}
-      setSelectedWord={setSelectedWord}
+      selectWord={selectWord}
       setDraft={setDraft}
       setEditing={setEditing}
       setSpeed={setSpeed}
@@ -690,6 +962,27 @@ export function Reader({ storyId }: { storyId: string }) {
       regroupWords={regroupWords}
       prepareNotes={prepareNotes}
       saveNote={saveNote}
+      practiceModel={
+        practiceView?.model && practiceView.model.semitones.some((value) => value != null)
+          ? { semitones: practiceView.model.semitones, duration: practiceView.model.duration }
+          : null
+      }
+      practiceUser={
+        practiceView?.user && practiceView.user.semitones.some((value) => value != null)
+          ? { semitones: practiceView.user.semitones, duration: practiceView.user.duration }
+          : null
+      }
+      practiceNote={
+        practiceView?.user?.note
+          ? practiceView.user.note
+          : practiceView?.model?.semitones.some((value) => value != null)
+            ? practiceView.model.note
+            : ""
+      }
+      practiceBusy={practiceBusy}
+      practiceRecording={practiceRecording}
+      onPracticeHear={() => void hearPractice()}
+      onPracticeRecite={() => void recitePractice()}
       bookTitle={chapterNav.bookTitle}
       previousChapter={chapterNav.previous}
       nextChapter={chapterNav.next}

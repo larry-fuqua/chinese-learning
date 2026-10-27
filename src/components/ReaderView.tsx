@@ -1,8 +1,8 @@
 "use client";
 import Link from "next/link";
 import { AppHeader } from "@/components/AppHeader";
-import { PitchGraph, type ReplayTrack } from "@/components/PitchGraph";
-import { SentenceLine, emptyNote } from "@/components/ReaderHelpers";
+import { PitchGraph, type PracticeContour, type ReplayTrack } from "@/components/PitchGraph";
+import { SentenceLine } from "@/components/ReaderHelpers";
 import { ReaderNotes } from "@/components/ReaderNotes";
 import { sentenceGroups } from "@/lib/text";
 import type { Note, PinyinMode, Story, ToneGraph, Word } from "@/lib/types";
@@ -34,8 +34,10 @@ export type ReaderViewProps = {
   editing: boolean;
   draft: Note | null;
   note: Note | undefined;
+  pinyin: string;
+  definitionPending: boolean;
   setActive: (n: number | ((i: number) => number)) => void;
-  setSelectedWord: (w: string | null) => void;
+  selectWord: (index: number, word: Word) => void;
   setDraft: (d: Note | null | ((d: Note | null) => Note | null)) => void;
   setEditing: (v: boolean) => void;
   setSpeed: (n: number) => void;
@@ -48,6 +50,13 @@ export type ReaderViewProps = {
   regroupWords: () => Promise<void>;
   prepareNotes: () => Promise<void>;
   saveNote: () => Promise<void>;
+  practiceModel: PracticeContour | null;
+  practiceUser: PracticeContour | null;
+  practiceNote: string;
+  practiceBusy: "" | "hear" | "recite";
+  practiceRecording: boolean;
+  onPracticeHear: () => void;
+  onPracticeRecite: () => void;
   bookTitle?: string;
   previousChapter?: { id: string; label: string };
   nextChapter?: { id: string; label: string };
@@ -58,10 +67,12 @@ export function ReaderView(p: ReaderViewProps) {
     recording, busy, error, graph, graphSyllable, playheadT, matchByExpected,
     replayTrack, setReplayTrack, replayIndex, playingTrack, hasUserAudio, replaySyllable,
     savedTakeAvailable, showingPreviousTake, togglePreviousTake,
-    editing, draft, note,
-    setActive, setSelectedWord, setDraft, setEditing, setSpeed, setGraphSyllable,
+    editing, draft, note, pinyin, definitionPending,
+    setActive, selectWord, setDraft, setEditing, setSpeed, setGraphSyllable,
     stopPlayback, playSentence, playStory, toggleRecord, cyclePinyin,
     regroupWords, prepareNotes, saveNote,
+    practiceModel, practiceUser, practiceNote, practiceBusy, practiceRecording,
+    onPracticeHear, onPracticeRecite,
     bookTitle, previousChapter, nextChapter,
   } = p;
   const groups = sentenceGroups(story.sentences, story.paragraphs);
@@ -181,22 +192,7 @@ export function ReaderView(p: ReaderViewProps) {
                         spokenChar={index === active ? spokenChar : null}
                         matchByExpected={index === active ? matchByExpected : undefined}
                         notes={story.notes}
-                        onWord={(word) => {
-                          setActive(index);
-                          setSelectedWord(word.hanzi);
-                          setDraft(
-                            story.notes[word.hanzi] ??
-                              (word.note
-                                ? {
-                                    pinyin: word.pinyin,
-                                    gloss: word.note.split(/[.;：:]/)[0]?.trim() || word.note,
-                                    usage: word.note,
-                                    source: "ai",
-                                  }
-                                : emptyNote(word)),
-                          );
-                          setEditing(false);
-                        }}
+                        onWord={(word) => selectWord(index, word)}
                       />
                     </button>
                   ))}
@@ -229,8 +225,11 @@ export function ReaderView(p: ReaderViewProps) {
           </div>
         </section>
         <ReaderNotes
+            sentenceId={p.sentence.id}
             selectedWord={selectedWord}
             note={note}
+            pinyin={pinyin}
+            definitionPending={definitionPending}
             editing={editing}
             draft={draft}
             setDraft={setDraft}
@@ -257,6 +256,13 @@ export function ReaderView(p: ReaderViewProps) {
             savedTakeAvailable={savedTakeAvailable}
             showingPreviousTake={showingPreviousTake}
             onTogglePreviousTake={togglePreviousTake}
+            practiceModel={practiceModel}
+            practiceUser={practiceUser}
+            practiceNote={practiceNote}
+            practiceBusy={practiceBusy}
+            practiceRecording={practiceRecording}
+            onPracticeHear={onPracticeHear}
+            onPracticeRecite={onPracticeRecite}
           />
         ) : (
           <div className="bg-graph px-4 py-3 text-center font-[family-name:var(--font-sans)] text-xs tracking-[0.14em] text-paper/50 uppercase">

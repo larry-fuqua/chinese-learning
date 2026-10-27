@@ -11,6 +11,8 @@ tests/fixtures/owner-take is the owner's real recording of sentence
 884d6d9a in story b9bee742. It is a timing/segmentation fixture only.
 The learner is a beginner; this script must never fit weights or pick
 thresholds on that take, or on any row that mentions it.
+Per-character practice takes under DATA_DIR are learner recordings too.
+This script reads only scripts/data/tone-rows.json and must not train on them.
 """
 
 from __future__ import annotations

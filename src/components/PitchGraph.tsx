@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { canonicalTone, classifyTone, strokeWithGaps } from "@/lib/pitch";
+import { toneGraphModel, toneGraphUser } from "@/lib/practice-graph";
 import {
   binCenterX,
   characterPxPerSec,
@@ -22,6 +23,11 @@ import type { PitchPoint, SyllablePitch, ToneGraph } from "@/lib/types";
 
 export type ReplayTrack = "model" | "yours";
 
+export type PracticeContour = {
+  semitones: (number | null)[];
+  duration: number;
+};
+
 export function PitchGraph({
   graph,
   selected,
@@ -37,6 +43,13 @@ export function PitchGraph({
   savedTakeAvailable,
   showingPreviousTake,
   onTogglePreviousTake,
+  practiceModel,
+  practiceUser,
+  practiceNote,
+  practiceBusy,
+  practiceRecording,
+  onPracticeHear,
+  onPracticeRecite,
 }: {
   graph: ToneGraph;
   selected: number;
@@ -52,11 +65,17 @@ export function PitchGraph({
   savedTakeAvailable: boolean;
   showingPreviousTake: boolean;
   onTogglePreviousTake: () => void;
+  practiceModel: PracticeContour | null;
+  practiceUser: PracticeContour | null;
+  practiceNote: string;
+  practiceBusy: "" | "hear" | "recite";
+  practiceRecording: boolean;
+  onPracticeHear: () => void;
+  onPracticeRecite: () => void;
 }) {
   const syllable = graph.syllables[selected] ?? graph.syllables[0];
   const showUser = graph.syllables.some((item) => item.userStart != null);
   const hasUserTake = showUser && graph.userPitch.some((point) => point.hz != null);
-  const syllableHasUser = syllable?.userStart != null;
   const difference = syllable
     ? toneDifferenceLabel(syllable.dictionaryTone, syllable.spokenTone, syllable.toneNote)
     : null;
@@ -148,7 +167,7 @@ export function PitchGraph({
           </div>
         </div>
 
-        <div className="flex items-stretch gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
           <SentenceCanvas
             refPitch={graph.refPitch}
             userPitch={graph.userPitch}
@@ -162,13 +181,41 @@ export function PitchGraph({
             showUser={showUser}
             previousTake={showingPreviousTake}
           />
-          <div className="w-44 shrink-0 self-start sm:w-52">
+          <div className="w-full shrink-0 sm:w-52">
             <SyllableCanvas
               syllable={syllable}
-              showUser={syllableHasUser}
+              practiceModel={practiceModel}
+              practiceUser={practiceUser}
               axis={axis}
               durations={durations}
             />
+            {syllable ? (
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  aria-label="Hear this character"
+                  disabled={practiceBusy !== ""}
+                  onClick={onPracticeHear}
+                  className="rounded-full bg-white/15 px-3 py-1.5 font-[family-name:var(--font-sans)] text-xs text-paper disabled:opacity-40"
+                >
+                  Hear
+                </button>
+                <button
+                  type="button"
+                  aria-label={practiceRecording ? "Stop and check this character" : "Recite this character"}
+                  disabled={practiceBusy === "hear"}
+                  onClick={onPracticeRecite}
+                  className="rounded-full bg-white/15 px-3 py-1.5 font-[family-name:var(--font-sans)] text-xs text-paper disabled:opacity-40"
+                >
+                  {practiceRecording ? "Stop & check" : "Recite"}
+                </button>
+              </div>
+            ) : null}
+            {practiceNote ? (
+              <p className="mt-1.5 font-[family-name:var(--font-sans)] text-[11px] leading-snug text-paper/75">
+                {practiceNote}
+              </p>
+            ) : null}
           </div>
         </div>
 
@@ -419,12 +466,14 @@ function SentenceCanvas({
 
 function SyllableCanvas({
   syllable,
-  showUser,
+  practiceModel,
+  practiceUser,
   axis,
   durations,
 }: {
   syllable?: SyllablePitch;
-  showUser: boolean;
+  practiceModel: PracticeContour | null;
+  practiceUser: PracticeContour | null;
   axis: PitchAxis;
   durations: number[];
 }) {
@@ -456,11 +505,14 @@ function SyllableCanvas({
       }
 
       const px = characterPxPerSec(width, durations);
-      const modelDur = Math.max(0, syllable.end - syllable.start);
-      const userDur =
-        syllable.userStart != null && syllable.userEnd != null && syllable.userEnd > syllable.userStart
-          ? syllable.userEnd - syllable.userStart
-          : 0;
+      const modelContour = toneGraphModel(syllable.refSemitones, practiceModel?.semitones ?? null);
+      const modelIsPractice =
+        practiceModel != null && practiceModel.semitones.some((value) => value != null);
+      const modelDur = modelIsPractice
+        ? practiceModel.duration
+        : Math.max(0, syllable.end - syllable.start);
+      const userContour = toneGraphUser(practiceUser?.semitones ?? null);
+      const userDur = userContour && practiceUser ? practiceUser.duration : 0;
       const modelW = modelDur * px;
       const userW = userDur * px;
       const template = canonicalTone(syllable.expectedTone);
@@ -470,10 +522,10 @@ function SyllableCanvas({
       ctx.clip();
       if (modelW > 1) {
         drawLine(ctx, template, modelW, height, "#8aa88f", 1.5, true, axis);
-        drawLine(ctx, syllable.refSemitones, modelW, height, "#e8c27a", 2.4, false, axis);
+        drawLine(ctx, modelContour, modelW, height, "#e8c27a", 2.4, false, axis);
       }
-      if (showUser && userW > 1) {
-        drawLine(ctx, syllable.userSemitones, userW, height, "#f3ead8", 3.2, false, axis);
+      if (userW > 1 && userContour) {
+        drawLine(ctx, userContour, userW, height, "#f3ead8", 3.2, false, axis);
       }
       ctx.restore();
     };
@@ -481,7 +533,7 @@ function SyllableCanvas({
     const observer = new ResizeObserver(() => draw());
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, [syllable, showUser, axis, durations]);
+  }, [syllable, practiceModel, practiceUser, axis, durations]);
 
   return (
     <canvas

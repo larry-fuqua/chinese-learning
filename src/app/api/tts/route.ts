@@ -11,6 +11,8 @@ export const dynamic = "force-dynamic";
 type TtsBody = {
   text?: string;
   speed?: number;
+  /** Contextual pinyin. Included in the cache key only; the spoken text stays `text`. */
+  reading?: string;
 };
 
 export async function POST(request: Request) {
@@ -26,8 +28,10 @@ export async function POST(request: Request) {
     const text = body.text?.trim();
     if (!text) return errorJson(400, "text is required");
     const speed = clamp(body.speed ?? 0.85, 0.7, 1.5);
+    const reading = cleanReading(body.reading);
+    if (reading == null) return errorJson(400, "reading is invalid");
 
-    const cached = await readTtsCache(text, speed);
+    const cached = await readTtsCache(text, speed, reading);
     if (cached) {
       return NextResponse.json(cached, { headers: { "Cache-Control": "private, no-store" } });
     }
@@ -67,7 +71,7 @@ export async function POST(request: Request) {
       speed,
     };
     if (result.audioBase64) {
-      await writeTtsCache(text, speed, result).catch((err) => {
+      await writeTtsCache(text, speed, result, reading).catch((err) => {
         const code = (err as NodeJS.ErrnoException).code;
         console.error("tts cache write failed", code ?? "unknown");
       });
@@ -86,4 +90,14 @@ export async function POST(request: Request) {
 function clamp(n: number, min: number, max: number) {
   if (!Number.isFinite(n)) return min;
   return Math.min(max, Math.max(min, n));
+}
+
+/** Empty when omitted. Null when the string cannot be part of a cache key. */
+function cleanReading(value: unknown): string | null {
+  if (value == null || value === "") return "";
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().slice(0, 80);
+  if (!trimmed) return "";
+  if (!/^[\p{L}\p{M}0-9'’\s·.-]+$/u.test(trimmed)) return null;
+  return trimmed;
 }
