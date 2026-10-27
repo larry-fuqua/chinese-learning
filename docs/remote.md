@@ -1,5 +1,7 @@
 # Remote access (client device + host backend)
 
+Production hosting on a private Tailscale proxy (`/chinese`) is in the README. That setup adds a passcode and stores stories on the server. The notes below are the older dev-server tunnel.
+
 Use this when the browser is on a laptop, phone, or Chromebook, but TTS/STT/grouping should still run on another machine (the host that has `XAI_API_KEY`).
 
 Hear and Recite need **that client device's** mic and speakers. Remote-desktop audio is usually a bad path.

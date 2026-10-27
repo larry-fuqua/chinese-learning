@@ -1,9 +1,10 @@
 "use client";
 import Link from "next/link";
 import { AppHeader } from "@/components/AppHeader";
-import { PitchGraph } from "@/components/PitchGraph";
-import { SentenceLine, emptyNote } from "@/components/ReaderHelpers";
+import { PitchGraph, type PracticeContour, type ReplayTrack } from "@/components/PitchGraph";
+import { SentenceLine } from "@/components/ReaderHelpers";
 import { ReaderNotes } from "@/components/ReaderNotes";
+import { sentenceGroups } from "@/lib/text";
 import type { Note, PinyinMode, Story, ToneGraph, Word } from "@/lib/types";
 export type ReaderViewProps = {
   story: Story;
@@ -20,12 +21,23 @@ export type ReaderViewProps = {
   graph: ToneGraph | null;
   graphSyllable: number;
   playheadT: number | null;
+  replayTrack: ReplayTrack;
+  setReplayTrack: (track: ReplayTrack) => void;
+  replayIndex: number | null;
+  playingTrack: ReplayTrack | null;
+  hasUserAudio: boolean;
+  savedTakeAvailable: boolean;
+  showingPreviousTake: boolean;
+  togglePreviousTake: () => void;
+  replaySyllable: (index: number, alternate: boolean) => void;
   matchByExpected: Map<number, "ok" | "miss" | "sub">;
   editing: boolean;
   draft: Note | null;
   note: Note | undefined;
+  pinyin: string;
+  definitionPending: boolean;
   setActive: (n: number | ((i: number) => number)) => void;
-  setSelectedWord: (w: string | null) => void;
+  selectWord: (index: number, word: Word) => void;
   setDraft: (d: Note | null | ((d: Note | null) => Note | null)) => void;
   setEditing: (v: boolean) => void;
   setSpeed: (n: number) => void;
@@ -38,16 +50,32 @@ export type ReaderViewProps = {
   regroupWords: () => Promise<void>;
   prepareNotes: () => Promise<void>;
   saveNote: () => Promise<void>;
+  practiceModel: PracticeContour | null;
+  practiceUser: PracticeContour | null;
+  practiceLines: string[];
+  practiceBusy: "" | "hear" | "recite";
+  practiceRecording: boolean;
+  onPracticeHear: () => void;
+  onPracticeRecite: () => void;
+  bookTitle?: string;
+  previousChapter?: { id: string; label: string };
+  nextChapter?: { id: string; label: string };
 };
 export function ReaderView(p: ReaderViewProps) {
   const {
     story, active, selectedWord, pinyinMode, speed, playing, spokenChar,
     recording, busy, error, graph, graphSyllable, playheadT, matchByExpected,
-    editing, draft, note,
-    setActive, setSelectedWord, setDraft, setEditing, setSpeed, setGraphSyllable,
+    replayTrack, setReplayTrack, replayIndex, playingTrack, hasUserAudio, replaySyllable,
+    savedTakeAvailable, showingPreviousTake, togglePreviousTake,
+    editing, draft, note, pinyin, definitionPending,
+    setActive, selectWord, setDraft, setEditing, setSpeed, setGraphSyllable,
     stopPlayback, playSentence, playStory, toggleRecord, cyclePinyin,
     regroupWords, prepareNotes, saveNote,
+    practiceModel, practiceUser, practiceLines, practiceBusy, practiceRecording,
+    onPracticeHear, onPracticeRecite,
+    bookTitle, previousChapter, nextChapter,
   } = p;
+  const groups = sentenceGroups(story.sentences, story.paragraphs);
   return (
     <div className="reader-shell flex h-dvh flex-col overflow-hidden">
       <AppHeader
@@ -72,8 +100,9 @@ export function ReaderView(p: ReaderViewProps) {
           </>
         }
       />
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <section className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto lg:flex lg:flex-col lg:overflow-hidden">
+        <div className="lg:flex lg:min-h-0 lg:flex-1 lg:flex-row lg:overflow-hidden">
+        <section className="lg:flex lg:min-h-0 lg:min-w-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
           <div className="shrink-0 border-b border-[color-mix(in_oklab,var(--color-ink)_10%,transparent)] px-4 py-3 sm:px-6">
             <div className="flex flex-wrap items-center gap-2 font-[family-name:var(--font-sans)] text-sm">
               <button
@@ -137,46 +166,58 @@ export function ReaderView(p: ReaderViewProps) {
               </p>
             ) : null}
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-6">
-            <div className="space-y-1">
-              {story.sentences.map((s, index) => (
-                <button
-                  key={s.id}
-                  id={`sentence-${index}`}
-                  type="button"
-                  onClick={() => setActive(index)}
-                  className={`sentence-row w-full rounded-r-xl px-3 py-3 text-left ${
-                    index === active ? "active" : ""
-                  }`}
-                >
-                  <SentenceLine
-                    sentence={s}
-                    active={index === active}
-                    pinyinMode={pinyinMode}
-                    selectedWord={index === active ? selectedWord : null}
-                    spokenChar={index === active ? spokenChar : null}
-                    matchByExpected={index === active ? matchByExpected : undefined}
-                    notes={story.notes}
-                    onWord={(word) => {
-                      setActive(index);
-                      setSelectedWord(word.hanzi);
-                      setDraft(
-                        story.notes[word.hanzi] ??
-                          (word.note
-                            ? {
-                                pinyin: word.pinyin,
-                                gloss: word.note.split(/[.;：:]/)[0]?.trim() || word.note,
-                                usage: word.note,
-                                source: "ai",
-                              }
-                            : emptyNote(word)),
-                      );
-                      setEditing(false);
-                    }}
-                  />
-                </button>
+          <div className="px-4 py-3 sm:px-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+            {bookTitle ? (
+              <p className="mb-3 font-[family-name:var(--font-sans)] text-xs uppercase tracking-[0.16em] text-ink-soft">
+                {bookTitle}
+              </p>
+            ) : null}
+            <div className={groups.length > 1 ? "space-y-8" : "space-y-1"}>
+              {groups.map((group, groupIndex) => (
+                <div key={groupIndex} className="space-y-1">
+                  {group.map(({ sentence: s, index }) => (
+                    <button
+                      key={s.id}
+                      id={`sentence-${index}`}
+                      type="button"
+                      onClick={() => setActive(index)}
+                      className={`sentence-row w-full rounded-r-xl px-3 py-3 text-left ${
+                        index === active ? "active" : ""
+                      }`}
+                    >
+                      <SentenceLine
+                        sentence={s}
+                        active={index === active}
+                        pinyinMode={pinyinMode}
+                        selectedWord={index === active ? selectedWord : null}
+                        spokenChar={index === active ? spokenChar : null}
+                        matchByExpected={index === active ? matchByExpected : undefined}
+                        notes={story.notes}
+                        onWord={(word) => selectWord(index, word)}
+                      />
+                    </button>
+                  ))}
+                </div>
               ))}
             </div>
+            {previousChapter || nextChapter ? (
+              <div className="mt-8 flex items-center justify-between gap-3 font-[family-name:var(--font-sans)] text-sm">
+                {previousChapter ? (
+                  <Link href={`/read/${previousChapter.id}`} className="text-cinnabar">
+                    Previous: {previousChapter.label}
+                  </Link>
+                ) : (
+                  <span />
+                )}
+                {nextChapter ? (
+                  <Link href={`/read/${nextChapter.id}`} className="text-cinnabar">
+                    Next: {nextChapter.label}
+                  </Link>
+                ) : (
+                  <span />
+                )}
+              </div>
+            ) : null}
             <p className="mt-4 pb-2 font-[family-name:var(--font-sans)] text-xs text-ink-soft">
               <kbd>Space</kbd> hear · <kbd>R</kbd> recite · <kbd>P</kbd> pinyin ·{" "}
               <kbd>↑</kbd>
@@ -185,8 +226,11 @@ export function ReaderView(p: ReaderViewProps) {
           </div>
         </section>
         <ReaderNotes
+            sentenceId={p.sentence.id}
             selectedWord={selectedWord}
             note={note}
+            pinyin={pinyin}
+            definitionPending={definitionPending}
             editing={editing}
             draft={draft}
             setDraft={setDraft}
@@ -195,7 +239,7 @@ export function ReaderView(p: ReaderViewProps) {
             prepareNotes={prepareNotes}
             saveNote={saveNote}
           />
-      </div>
+        </div>
       <div className="shrink-0">
         {graph ? (
           <PitchGraph
@@ -203,12 +247,30 @@ export function ReaderView(p: ReaderViewProps) {
             selected={graphSyllable}
             playheadT={playheadT}
             onSelect={setGraphSyllable}
+            replayTrack={replayTrack}
+            onReplayTrack={setReplayTrack}
+            replayIndex={replayIndex}
+            playingTrack={playingTrack}
+            hasUserAudio={hasUserAudio}
+            onReplay={replaySyllable}
+            referenceText={p.sentence.hanzi}
+            savedTakeAvailable={savedTakeAvailable}
+            showingPreviousTake={showingPreviousTake}
+            onTogglePreviousTake={togglePreviousTake}
+            practiceModel={practiceModel}
+            practiceUser={practiceUser}
+            practiceLines={practiceLines}
+            practiceBusy={practiceBusy}
+            practiceRecording={practiceRecording}
+            onPracticeHear={onPracticeHear}
+            onPracticeRecite={onPracticeRecite}
           />
         ) : (
           <div className="bg-graph px-4 py-3 text-center font-[family-name:var(--font-sans)] text-xs tracking-[0.14em] text-paper/50 uppercase">
             Hear a sentence to see its pitch graph
           </div>
         )}
+      </div>
       </div>
     </div>
   );
