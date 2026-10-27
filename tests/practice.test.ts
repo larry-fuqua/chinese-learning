@@ -61,6 +61,18 @@ test("practice feedback follows the drawn contour", () => {
     contour: rising,
   });
   assert.match(right, /shape matches/);
+  const flat = [0, 0.05, -0.05, 0.1, -0.1, 0, 0.08, -0.04, 0.02, 0];
+  assert.equal(classifyTone(flat), 1);
+  const flatNote = practiceFeedback({
+    who: "yours",
+    expectedTone: 2,
+    heardTone: 2,
+    pExpected: 0.9,
+    contour: flat,
+  });
+  assert.match(flatNote, /yours 1st · flat/);
+  assert.match(flatNote, /shape is off/);
+  assert.equal(flatNote.includes("shape matches"), false);
 });
 
 const story = {

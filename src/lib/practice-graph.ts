@@ -1,5 +1,5 @@
 import { classifyTone } from "./pitch";
-import { contourVerdict, oppositePitchShape } from "./sandhi";
+import { contourVerdict } from "./sandhi";
 import { toneName } from "./text";
 
 /** Clean-clip contour when it has pitch; otherwise the sentence slice. */
@@ -31,17 +31,19 @@ export function practiceFeedback(opts: {
   contour: readonly (number | null)[];
 }): string {
   const shape = classifyTone([...opts.contour]);
-  let heard = opts.heardTone;
-  if (shape != null && shape !== 5 && heard != null && oppositePitchShape(shape, heard)) {
-    heard = shape;
-  }
-  const verdict = contourVerdict({
-    present: true,
-    expectedTone: opts.expectedTone,
-    heardTone: heard,
-    pExpected: opts.pExpected,
-    shapeTone: shape,
-  });
+  const heard = shape != null && shape !== 5 ? shape : opts.heardTone;
+  const drawnAgrees = shape != null && shape !== 5 && shape === opts.expectedTone;
+  const drawnDisagrees = shape != null && shape !== 5 && shape !== opts.expectedTone;
+  const verdict =
+    opts.expectedTone !== 5 && drawnDisagrees
+      ? " · shape is off"
+      : contourVerdict({
+          present: true,
+          expectedTone: opts.expectedTone,
+          heardTone: heard,
+          pExpected: drawnAgrees ? 1 : opts.pExpected,
+          shapeTone: shape,
+        });
   const heardLabel = heard != null ? ` · ${opts.who} ${toneName(heard)}` : "";
   return `Tone ${opts.expectedTone} · ${toneName(opts.expectedTone)}${heardLabel}${verdict}`;
 }
