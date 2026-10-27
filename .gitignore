@@ -45,3 +45,6 @@ next-env.d.ts
 # python
 __pycache__/
 *.pyc
+
+# eval downloads and intermediate audio (metrics JSON is committed)
+/eval/cache/

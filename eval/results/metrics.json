@@ -1,0 +1,2054 @@
+{
+  "corpus": {
+    "name": "THCHS-30 test speakers (D*), audio from changelinglab/thchs30-segment, alignments from anyspeech/THCHS-30-alignments",
+    "license": "Apache-2.0",
+    "referenceAligner": "Published phone alignments. Phone inventory (IPA, Chao tone, length marks such as ː and ˘) matches the Montreal Forced Aligner Mandarin dictionary. MFA was not re-run here. Utterances whose phones did not split into one syllable per character were dropped.",
+    "referencePitch": "Praat autocorrelation via parselmouth. time_step=0.01, floor=70 Hz, ceiling=500 Hz.",
+    "groupedUtterancesInShard": 1591,
+    "alignmentUtterances": 300,
+    "pitchAndToneUtterances": 64,
+    "alignmentCharacters": 9648,
+    "speakersFull": [
+      "D11",
+      "D12",
+      "D13",
+      "D21",
+      "D31",
+      "D32",
+      "D4",
+      "D6",
+      "D7",
+      "D8"
+    ],
+    "ipaToneCountsFull": {
+      "1": 523,
+      "2": 436,
+      "3": 389,
+      "4": 622,
+      "5": 70
+    },
+    "excluded": "tests/fixtures/owner-take is alignment-only. No threshold or weight was fit on it."
+  },
+  "alignment": {
+    "tokens": {
+      "n": 9648,
+      "missRate": 0.003,
+      "medianAbsStartMs": 0.0,
+      "medianAbsEndMs": 0.0,
+      "medianSignedStartMs": 0.0,
+      "medianSignedEndMs": 0.0,
+      "p90MaxEdgeMs": 0.0,
+      "within50Ms": 1.0,
+      "within100Ms": 1.0,
+      "medianBleedMs": 0.0,
+      "medianIou": 1.0
+    },
+    "sliced": {
+      "n": 9648,
+      "missRate": 0.0,
+      "medianAbsStartMs": 30.0,
+      "medianAbsEndMs": 0.0,
+      "medianSignedStartMs": -30.0,
+      "medianSignedEndMs": 0.0,
+      "p90MaxEdgeMs": 70.0,
+      "within50Ms": 0.733,
+      "within100Ms": 0.982,
+      "medianBleedMs": 30.0,
+      "medianIou": 0.85
+    },
+    "faPost": {
+      "n": 9648,
+      "missRate": 0.0,
+      "medianAbsStartMs": 30.0,
+      "medianAbsEndMs": 0.0,
+      "medianSignedStartMs": -30.0,
+      "medianSignedEndMs": 0.0,
+      "p90MaxEdgeMs": 70.0,
+      "within50Ms": 0.733,
+      "within100Ms": 0.982,
+      "medianBleedMs": 30.0,
+      "medianIou": 0.85
+    },
+    "proportionalRaw": {
+      "n": 9648,
+      "missRate": 0.386,
+      "medianAbsStartMs": 134.8,
+      "medianAbsEndMs": 130.0,
+      "medianSignedStartMs": 4.0,
+      "medianSignedEndMs": 26.9,
+      "p90MaxEdgeMs": 437.6,
+      "within50Ms": 0.127,
+      "within100Ms": 0.314,
+      "medianBleedMs": 83.5,
+      "medianIou": 0.251
+    },
+    "proportional": {
+      "n": 9648,
+      "missRate": 0.356,
+      "medianAbsStartMs": 132.7,
+      "medianAbsEndMs": 128.0,
+      "medianSignedStartMs": -20.0,
+      "medianSignedEndMs": 33.8,
+      "p90MaxEdgeMs": 445.2,
+      "within50Ms": 0.082,
+      "within100Ms": 0.301,
+      "medianBleedMs": 97.1,
+      "medianIou": 0.285
+    },
+    "voiced": {
+      "n": 2040,
+      "missRate": 0.537,
+      "medianAbsStartMs": 190.9,
+      "medianAbsEndMs": 189.1,
+      "medianSignedStartMs": -14.2,
+      "medianSignedEndMs": -9.4,
+      "p90MaxEdgeMs": 582.6,
+      "within50Ms": 0.056,
+      "within100Ms": 0.179,
+      "medianBleedMs": 87.7,
+      "medianIou": 0.051
+    }
+  },
+  "pitch": {
+    "nFramesInsideSyllable": 42643,
+    "nBothVoiced": 25230,
+    "voicingRecall": 0.859,
+    "voicingFalseAlarm": 0.255,
+    "voicingDisagreement": 0.177,
+    "grossPitchError": 0.038,
+    "octaveError": 0.029,
+    "within1Semitone": 0.802,
+    "medianAbsSemitone": 0.35,
+    "praatAbove400Hz": 0.011
+  },
+  "tone": {
+    "oracle": {
+      "n": 1970,
+      "accuracy": 0.549,
+      "matrix": {
+        "1": {
+          "1": 316,
+          "2": 41,
+          "3": 18,
+          "4": 137,
+          "none": 11
+        },
+        "2": {
+          "1": 74,
+          "2": 279,
+          "3": 38,
+          "4": 20,
+          "none": 25
+        },
+        "3": {
+          "1": 36,
+          "2": 102,
+          "3": 119,
+          "4": 69,
+          "none": 63
+        },
+        "4": {
+          "1": 69,
+          "2": 41,
+          "3": 101,
+          "4": 368,
+          "none": 43
+        }
+      },
+      "perTone": {
+        "1": {
+          "n": 523,
+          "recall": 0.604
+        },
+        "2": {
+          "n": 436,
+          "recall": 0.64
+        },
+        "3": {
+          "n": 389,
+          "recall": 0.306
+        },
+        "4": {
+          "n": 622,
+          "recall": 0.592
+        }
+      }
+    },
+    "sliced": {
+      "n": 1970,
+      "accuracy": 0.56,
+      "matrix": {
+        "1": {
+          "1": 323,
+          "2": 44,
+          "3": 16,
+          "4": 125,
+          "none": 15
+        },
+        "2": {
+          "1": 77,
+          "2": 268,
+          "3": 41,
+          "4": 15,
+          "none": 35
+        },
+        "3": {
+          "1": 33,
+          "2": 94,
+          "3": 112,
+          "4": 85,
+          "none": 65
+        },
+        "4": {
+          "1": 69,
+          "2": 28,
+          "3": 80,
+          "4": 400,
+          "none": 45
+        }
+      },
+      "perTone": {
+        "1": {
+          "n": 523,
+          "recall": 0.618
+        },
+        "2": {
+          "n": 436,
+          "recall": 0.615
+        },
+        "3": {
+          "n": 389,
+          "recall": 0.288
+        },
+        "4": {
+          "n": 622,
+          "recall": 0.643
+        }
+      }
+    },
+    "proportional": {
+      "n": 1970,
+      "accuracy": 0.315,
+      "matrix": {
+        "1": {
+          "1": 182,
+          "2": 72,
+          "3": 43,
+          "4": 140,
+          "none": 86
+        },
+        "2": {
+          "1": 68,
+          "2": 164,
+          "3": 53,
+          "4": 81,
+          "none": 70
+        },
+        "3": {
+          "1": 81,
+          "2": 72,
+          "3": 54,
+          "4": 103,
+          "none": 79
+        },
+        "4": {
+          "1": 90,
+          "2": 91,
+          "3": 93,
+          "4": 221,
+          "none": 127
+        }
+      },
+      "perTone": {
+        "1": {
+          "n": 523,
+          "recall": 0.348
+        },
+        "2": {
+          "n": 436,
+          "recall": 0.376
+        },
+        "3": {
+          "n": 389,
+          "recall": 0.139
+        },
+        "4": {
+          "n": 622,
+          "recall": 0.355
+        }
+      }
+    },
+    "voiced": {
+      "n": 1970,
+      "accuracy": 0.261,
+      "matrix": {
+        "1": {
+          "1": 170,
+          "2": 80,
+          "3": 45,
+          "4": 121,
+          "none": 107
+        },
+        "2": {
+          "1": 95,
+          "2": 99,
+          "3": 60,
+          "4": 94,
+          "none": 88
+        },
+        "3": {
+          "1": 82,
+          "2": 79,
+          "3": 53,
+          "4": 86,
+          "none": 89
+        },
+        "4": {
+          "1": 112,
+          "2": 100,
+          "3": 65,
+          "4": 192,
+          "none": 153
+        }
+      },
+      "perTone": {
+        "1": {
+          "n": 523,
+          "recall": 0.325
+        },
+        "2": {
+          "n": 436,
+          "recall": 0.227
+        },
+        "3": {
+          "n": 389,
+          "recall": 0.136
+        },
+        "4": {
+          "n": 622,
+          "recall": 0.309
+        }
+      }
+    },
+    "praat": {
+      "n": 1970,
+      "accuracy": 0.601,
+      "matrix": {
+        "1": {
+          "1": 289,
+          "2": 76,
+          "3": 16,
+          "4": 130,
+          "none": 12
+        },
+        "2": {
+          "1": 46,
+          "2": 292,
+          "3": 30,
+          "4": 17,
+          "none": 51
+        },
+        "3": {
+          "1": 21,
+          "2": 63,
+          "3": 150,
+          "4": 104,
+          "none": 51
+        },
+        "4": {
+          "1": 30,
+          "2": 19,
+          "3": 95,
+          "4": 453,
+          "none": 25
+        }
+      },
+      "perTone": {
+        "1": {
+          "n": 523,
+          "recall": 0.553
+        },
+        "2": {
+          "n": 436,
+          "recall": 0.67
+        },
+        "3": {
+          "n": 389,
+          "recall": 0.386
+        },
+        "4": {
+          "n": 622,
+          "recall": 0.728
+        }
+      }
+    },
+    "hybrid": {
+      "n": 1970,
+      "accuracy": 0.575,
+      "matrix": {
+        "1": {
+          "1": 292,
+          "2": 48,
+          "3": 12,
+          "4": 161,
+          "none": 10
+        },
+        "2": {
+          "1": 53,
+          "2": 263,
+          "3": 55,
+          "4": 38,
+          "none": 27
+        },
+        "3": {
+          "1": 19,
+          "2": 71,
+          "3": 95,
+          "4": 134,
+          "none": 70
+        },
+        "4": {
+          "1": 31,
+          "2": 21,
+          "3": 46,
+          "4": 483,
+          "none": 41
+        }
+      },
+      "perTone": {
+        "1": {
+          "n": 523,
+          "recall": 0.558
+        },
+        "2": {
+          "n": 436,
+          "recall": 0.603
+        },
+        "3": {
+          "n": 389,
+          "recall": 0.244
+        },
+        "4": {
+          "n": 622,
+          "recall": 0.777
+        }
+      }
+    },
+    "noskip": {
+      "n": 1970,
+      "accuracy": 0.558,
+      "matrix": {
+        "1": {
+          "1": 293,
+          "2": 45,
+          "3": 19,
+          "4": 159,
+          "none": 7
+        },
+        "2": {
+          "1": 69,
+          "2": 285,
+          "3": 42,
+          "4": 23,
+          "none": 17
+        },
+        "3": {
+          "1": 40,
+          "2": 103,
+          "3": 120,
+          "4": 84,
+          "none": 42
+        },
+        "4": {
+          "1": 68,
+          "2": 35,
+          "3": 85,
+          "4": 401,
+          "none": 33
+        }
+      },
+      "perTone": {
+        "1": {
+          "n": 523,
+          "recall": 0.56
+        },
+        "2": {
+          "n": 436,
+          "recall": 0.654
+        },
+        "3": {
+          "n": 389,
+          "recall": 0.308
+        },
+        "4": {
+          "n": 622,
+          "recall": 0.645
+        }
+      }
+    },
+    "verdictOracle": {
+      "n": 1970,
+      "matchRate": 0.652,
+      "offRate": 0.276,
+      "unclearRate": 0.072,
+      "matchButArgmaxWrong": 0.112,
+      "falseMatchWhenExpectedIsWrong": 0.193,
+      "nForced": 5910,
+      "oppositeShapeBlockedAMatch": 25
+    },
+    "verdictOracleAgainstAppExpected": {
+      "n": 1948,
+      "matchRate": 0.659,
+      "offRate": 0.269,
+      "unclearRate": 0.072,
+      "matchButArgmaxWrong": 0.114,
+      "falseMatchWhenExpectedIsWrong": 0.185,
+      "nForced": 5727,
+      "oppositeShapeBlockedAMatch": 34
+    },
+    "verdictSliced": {
+      "n": 1970,
+      "matchRate": 0.658,
+      "offRate": 0.261,
+      "unclearRate": 0.081,
+      "matchButArgmaxWrong": 0.114,
+      "falseMatchWhenExpectedIsWrong": 0.184,
+      "nForced": 5910,
+      "oppositeShapeBlockedAMatch": 37
+    },
+    "shapeRuleOracle": {
+      "n": 1970,
+      "accuracy": 0.459,
+      "matrix": {
+        "1": {
+          "1": 393,
+          "2": 21,
+          "3": 0,
+          "4": 36,
+          "none": 73
+        },
+        "2": {
+          "1": 155,
+          "2": 154,
+          "3": 1,
+          "4": 37,
+          "none": 89
+        },
+        "3": {
+          "1": 127,
+          "2": 19,
+          "3": 0,
+          "4": 136,
+          "none": 107
+        },
+        "4": {
+          "1": 157,
+          "2": 8,
+          "3": 0,
+          "4": 357,
+          "none": 100
+        }
+      },
+      "perTone": {
+        "1": {
+          "n": 523,
+          "recall": 0.751
+        },
+        "2": {
+          "n": 436,
+          "recall": 0.353
+        },
+        "3": {
+          "n": 389,
+          "recall": 0.0
+        },
+        "4": {
+          "n": 622,
+          "recall": 0.574
+        }
+      }
+    },
+    "whereAppExpectedMatchesIpa": {
+      "n": 1831,
+      "shareOfScored": 0.929,
+      "argmax": {
+        "n": 1831,
+        "accuracy": 0.565,
+        "matrix": {
+          "1": {
+            "1": 278,
+            "2": 34,
+            "3": 17,
+            "4": 122,
+            "none": 9
+          },
+          "2": {
+            "1": 73,
+            "2": 279,
+            "3": 38,
+            "4": 19,
+            "none": 25
+          },
+          "3": {
+            "1": 22,
+            "2": 65,
+            "3": 110,
+            "4": 67,
+            "none": 57
+          },
+          "4": {
+            "1": 69,
+            "2": 40,
+            "3": 98,
+            "4": 367,
+            "none": 42
+          }
+        },
+        "perTone": {
+          "1": {
+            "n": 460,
+            "recall": 0.604
+          },
+          "2": {
+            "n": 434,
+            "recall": 0.643
+          },
+          "3": {
+            "n": 321,
+            "recall": 0.343
+          },
+          "4": {
+            "n": 616,
+            "recall": 0.596
+          }
+        }
+      }
+    },
+    "refit": {
+      "heldOutSpeakers": [
+        "D7",
+        "D8"
+      ],
+      "nTrain": 1459,
+      "nTest": 369,
+      "majorityBaseline": 0.328,
+      "appModel": 0.583,
+      "refitOnNative": 0.688,
+      "confusionRefit": {
+        "1": {
+          "1": 83,
+          "2": 3,
+          "3": 1,
+          "4": 12,
+          "none": 0
+        },
+        "2": {
+          "1": 24,
+          "2": 54,
+          "3": 5,
+          "4": 1,
+          "none": 0
+        },
+        "3": {
+          "1": 6,
+          "2": 13,
+          "3": 35,
+          "4": 11,
+          "none": 0
+        },
+        "4": {
+          "1": 16,
+          "2": 6,
+          "3": 17,
+          "4": 82,
+          "none": 0
+        }
+      }
+    },
+    "refitOnSlicedContours": {
+      "heldOutSpeakers": [
+        "D7",
+        "D8"
+      ],
+      "nTrain": 1449,
+      "nTest": 361,
+      "majorityBaseline": 0.327,
+      "appModel": 0.612,
+      "refitOnNative": 0.69,
+      "confusionRefit": {
+        "1": {
+          "1": 83,
+          "2": 4,
+          "3": 1,
+          "4": 11,
+          "none": 0
+        },
+        "2": {
+          "1": 20,
+          "2": 52,
+          "3": 7,
+          "4": 0,
+          "none": 0
+        },
+        "3": {
+          "1": 6,
+          "2": 12,
+          "3": 36,
+          "4": 11,
+          "none": 0
+        },
+        "4": {
+          "1": 18,
+          "2": 6,
+          "3": 16,
+          "4": 78,
+          "none": 0
+        }
+      }
+    }
+  },
+  "tone3Surface": {
+    "n": 389,
+    "pred": {
+      "1": 36,
+      "2": 102,
+      "3": 119,
+      "4": 69,
+      "None": 63
+    },
+    "recallAs3": 0.306,
+    "nShape": 249,
+    "medianLateMinusEarlySemitone": -3.8,
+    "fractionFallingMoreThan1st": 0.831
+  },
+  "synthetic": {
+    "syn-sentence": {
+      "alignmentSliced": {
+        "n": 4,
+        "missRate": 0.0,
+        "medianAbsStartMs": 30.0,
+        "medianAbsEndMs": 10.0,
+        "medianSignedStartMs": -30.0,
+        "medianSignedEndMs": 10.0,
+        "p90MaxEdgeMs": 68.5,
+        "within50Ms": 0.5,
+        "within100Ms": 1.0,
+        "medianBleedMs": 0.0,
+        "medianIou": 0.816
+      },
+      "alignmentProportional": {
+        "n": 4,
+        "missRate": 0.0,
+        "medianAbsStartMs": 33.7,
+        "medianAbsEndMs": 33.8,
+        "medianSignedStartMs": -33.7,
+        "medianSignedEndMs": 33.8,
+        "p90MaxEdgeMs": 101.5,
+        "within50Ms": 0.25,
+        "within100Ms": 0.75,
+        "medianBleedMs": 0.0,
+        "medianIou": 0.748
+      },
+      "toneOracle": {
+        "n": 4,
+        "accuracy": 0.75,
+        "matrix": {
+          "1": {
+            "1": 1,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "2": {
+            "1": 0,
+            "2": 1,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "3": {
+            "1": 0,
+            "2": 1,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "4": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 1,
+            "none": 0
+          }
+        },
+        "perTone": {
+          "1": {
+            "n": 1,
+            "recall": 1.0
+          },
+          "2": {
+            "n": 1,
+            "recall": 1.0
+          },
+          "3": {
+            "n": 1,
+            "recall": 0.0
+          },
+          "4": {
+            "n": 1,
+            "recall": 1.0
+          }
+        }
+      },
+      "tonePraat": {
+        "n": 4,
+        "accuracy": 0.75,
+        "matrix": {
+          "1": {
+            "1": 1,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "2": {
+            "1": 0,
+            "2": 1,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "3": {
+            "1": 0,
+            "2": 1,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "4": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 1,
+            "none": 0
+          }
+        },
+        "perTone": {
+          "1": {
+            "n": 1,
+            "recall": 1.0
+          },
+          "2": {
+            "n": 1,
+            "recall": 1.0
+          },
+          "3": {
+            "n": 1,
+            "recall": 0.0
+          },
+          "4": {
+            "n": 1,
+            "recall": 1.0
+          }
+        }
+      },
+      "toneNoskip": {
+        "n": 4,
+        "accuracy": 0.75,
+        "matrix": {
+          "1": {
+            "1": 1,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "2": {
+            "1": 0,
+            "2": 1,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "3": {
+            "1": 0,
+            "2": 1,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "4": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 1,
+            "none": 0
+          }
+        },
+        "perTone": {
+          "1": {
+            "n": 1,
+            "recall": 1.0
+          },
+          "2": {
+            "n": 1,
+            "recall": 1.0
+          },
+          "3": {
+            "n": 1,
+            "recall": 0.0
+          },
+          "4": {
+            "n": 1,
+            "recall": 1.0
+          }
+        }
+      },
+      "grades": [
+        {
+          "ipa": 1,
+          "spoken": 1,
+          "dictionary": 1,
+          "pred": 1,
+          "shape": 1,
+          "pIpa": 0.5689433825770491,
+          "pSpoken": 0.5689433825770491,
+          "verdictIpa": " · shape matches",
+          "verdictSpoken": " · shape matches",
+          "verdictIf": {
+            "2": " · shape is off",
+            "3": " · shape is off",
+            "4": " · shape is off"
+          },
+          "features": [
+            0,
+            0,
+            0,
+            0,
+            0.003696224706400445,
+            0.0009240561766001113,
+            0.004572988796982399,
+            0.015152524499076541,
+            0.0009240561766001113,
+            0.26
+          ],
+          "dur": 0.26
+        },
+        {
+          "ipa": 2,
+          "spoken": 2,
+          "dictionary": 2,
+          "pred": 2,
+          "shape": 2,
+          "pIpa": 0.6779485994890131,
+          "pSpoken": 0.6779485994890131,
+          "verdictIpa": " · shape matches",
+          "verdictSpoken": " · shape matches",
+          "verdictIf": {
+            "1": " · shape matches",
+            "3": " · shape is off",
+            "4": " · shape is off"
+          },
+          "features": [
+            -0.7029226176203861,
+            0.23009417438314356,
+            1.1932519849133285,
+            2.140268717602385,
+            2.8821141568853004,
+            1.2967482478438475,
+            4.454729208846626,
+            -1.7348633266203708,
+            1.2958241916672473,
+            0.26
+          ],
+          "dur": 0.26
+        },
+        {
+          "ipa": 3,
+          "spoken": 3,
+          "dictionary": 3,
+          "pred": 2,
+          "shape": 2,
+          "pIpa": 5.2084432617970764e-08,
+          "pSpoken": 5.2084432617970764e-08,
+          "verdictIpa": " · shape is off",
+          "verdictSpoken": " · shape is off",
+          "verdictIf": {
+            "1": " · shape is off",
+            "2": " · shape matches",
+            "4": " · shape is off"
+          },
+          "features": [
+            -4.512192173821436,
+            -5.28231168243407,
+            -5.131216800740353,
+            -3.7887364925593836,
+            -1.9294219406264268,
+            -4.029033076810843,
+            3.7635327619969545,
+            10.486981568562884,
+            -5.325781324654691,
+            0.29999999999999993
+          ],
+          "dur": 0.29999999999999993
+        },
+        {
+          "ipa": 4,
+          "spoken": 4,
+          "dictionary": 4,
+          "pred": 4,
+          "shape": 4,
+          "pIpa": 0.9607258482077308,
+          "pSpoken": 0.9607258482077308,
+          "verdictIpa": " · shape matches",
+          "verdictSpoken": " · shape matches",
+          "verdictIf": {
+            "1": " · shape is off",
+            "2": " · shape is off",
+            "3": " · shape is off"
+          },
+          "features": [
+            2.3456444708213002,
+            1.4509283045136743,
+            0.05717516910067603,
+            -1.2329667832818716,
+            -2.2666109144698208,
+            -0.1250912710001024,
+            -5.87268404390532,
+            0.9655865828101855,
+            3.903941805810741,
+            0.24
+          ],
+          "dur": 0.24
+        }
+      ]
+    },
+    "syn-missing-f0": {
+      "alignmentSliced": {
+        "n": 1,
+        "missRate": 0.0,
+        "medianAbsStartMs": 70.0,
+        "medianAbsEndMs": 70.0,
+        "medianSignedStartMs": -70.0,
+        "medianSignedEndMs": 70.0,
+        "p90MaxEdgeMs": 70.0,
+        "within50Ms": 0.0,
+        "within100Ms": 1.0,
+        "medianBleedMs": 0.0,
+        "medianIou": 0.667
+      },
+      "alignmentProportional": {
+        "n": 1,
+        "missRate": 0.0,
+        "medianAbsStartMs": 0.0,
+        "medianAbsEndMs": 0.0,
+        "medianSignedStartMs": 0.0,
+        "medianSignedEndMs": 0.0,
+        "p90MaxEdgeMs": 0.0,
+        "within50Ms": 1.0,
+        "within100Ms": 1.0,
+        "medianBleedMs": 0.0,
+        "medianIou": 1.0
+      },
+      "toneOracle": {
+        "n": 1,
+        "accuracy": 1.0,
+        "matrix": {
+          "1": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "2": {
+            "1": 0,
+            "2": 1,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "3": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "4": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          }
+        },
+        "perTone": {
+          "1": {
+            "n": 0,
+            "recall": null
+          },
+          "2": {
+            "n": 1,
+            "recall": 1.0
+          },
+          "3": {
+            "n": 0,
+            "recall": null
+          },
+          "4": {
+            "n": 0,
+            "recall": null
+          }
+        }
+      },
+      "tonePraat": {
+        "n": 1,
+        "accuracy": 1.0,
+        "matrix": {
+          "1": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "2": {
+            "1": 0,
+            "2": 1,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "3": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "4": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          }
+        },
+        "perTone": {
+          "1": {
+            "n": 0,
+            "recall": null
+          },
+          "2": {
+            "n": 1,
+            "recall": 1.0
+          },
+          "3": {
+            "n": 0,
+            "recall": null
+          },
+          "4": {
+            "n": 0,
+            "recall": null
+          }
+        }
+      },
+      "toneNoskip": {
+        "n": 1,
+        "accuracy": 1.0,
+        "matrix": {
+          "1": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "2": {
+            "1": 0,
+            "2": 1,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "3": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "4": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          }
+        },
+        "perTone": {
+          "1": {
+            "n": 0,
+            "recall": null
+          },
+          "2": {
+            "n": 1,
+            "recall": 1.0
+          },
+          "3": {
+            "n": 0,
+            "recall": null
+          },
+          "4": {
+            "n": 0,
+            "recall": null
+          }
+        }
+      },
+      "grades": [
+        {
+          "ipa": 2,
+          "spoken": 2,
+          "dictionary": 2,
+          "pred": 2,
+          "shape": 2,
+          "pIpa": 0.9366513646590404,
+          "pSpoken": 0.9366513646590404,
+          "verdictIpa": " · shape matches",
+          "verdictSpoken": " · shape matches",
+          "verdictIf": {
+            "1": " · shape is off",
+            "3": " · shape is off",
+            "4": " · shape is off"
+          },
+          "features": [
+            -2.1698256186578204,
+            -0.8894510157413882,
+            0.6950948880428015,
+            2.1647100142705913,
+            3.3240685738386477,
+            0.8556964287822594,
+            6.895631453539422,
+            -2.0453236822905057,
+            0.8556964287822594,
+            0.28
+          ],
+          "dur": 0.28
+        }
+      ]
+    },
+    "syn-high": {
+      "alignmentSliced": {
+        "n": 1,
+        "missRate": 0.0,
+        "medianAbsStartMs": 70.0,
+        "medianAbsEndMs": 70.0,
+        "medianSignedStartMs": -70.0,
+        "medianSignedEndMs": 70.0,
+        "p90MaxEdgeMs": 70.0,
+        "within50Ms": 0.0,
+        "within100Ms": 1.0,
+        "medianBleedMs": 0.0,
+        "medianIou": 0.682
+      },
+      "alignmentProportional": {
+        "n": 1,
+        "missRate": 0.0,
+        "medianAbsStartMs": 0.0,
+        "medianAbsEndMs": 0.0,
+        "medianSignedStartMs": 0.0,
+        "medianSignedEndMs": 0.0,
+        "p90MaxEdgeMs": 0.0,
+        "within50Ms": 1.0,
+        "within100Ms": 1.0,
+        "medianBleedMs": 0.0,
+        "medianIou": 1.0
+      },
+      "toneOracle": {
+        "n": 1,
+        "accuracy": 1.0,
+        "matrix": {
+          "1": {
+            "1": 1,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "2": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "3": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "4": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          }
+        },
+        "perTone": {
+          "1": {
+            "n": 1,
+            "recall": 1.0
+          },
+          "2": {
+            "n": 0,
+            "recall": null
+          },
+          "3": {
+            "n": 0,
+            "recall": null
+          },
+          "4": {
+            "n": 0,
+            "recall": null
+          }
+        }
+      },
+      "tonePraat": {
+        "n": 1,
+        "accuracy": 1.0,
+        "matrix": {
+          "1": {
+            "1": 1,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "2": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "3": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "4": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          }
+        },
+        "perTone": {
+          "1": {
+            "n": 1,
+            "recall": 1.0
+          },
+          "2": {
+            "n": 0,
+            "recall": null
+          },
+          "3": {
+            "n": 0,
+            "recall": null
+          },
+          "4": {
+            "n": 0,
+            "recall": null
+          }
+        }
+      },
+      "toneNoskip": {
+        "n": 1,
+        "accuracy": 1.0,
+        "matrix": {
+          "1": {
+            "1": 1,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "2": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "3": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          },
+          "4": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "none": 0
+          }
+        },
+        "perTone": {
+          "1": {
+            "n": 1,
+            "recall": 1.0
+          },
+          "2": {
+            "n": 0,
+            "recall": null
+          },
+          "3": {
+            "n": 0,
+            "recall": null
+          },
+          "4": {
+            "n": 0,
+            "recall": null
+          }
+        }
+      },
+      "grades": [
+        {
+          "ipa": 1,
+          "spoken": 1,
+          "dictionary": 1,
+          "pred": 1,
+          "shape": 1,
+          "pIpa": 0.5807311346628238,
+          "pSpoken": 0.5807311346628238,
+          "verdictIpa": " · shape matches",
+          "verdictSpoken": " · shape matches",
+          "verdictIf": {
+            "2": " · shape is off",
+            "3": " · shape is off",
+            "4": " · shape is off"
+          },
+          "features": [
+            0,
+            0,
+            0,
+            0,
+            0.0006144074065447801,
+            0.00015360185163619503,
+            0.0008501239978229544,
+            0.0036382975646647685,
+            0.00015360185163619503,
+            0.3
+          ],
+          "dur": 0.3
+        }
+      ]
+    }
+  },
+  "appFixtures": {
+    "note": "24 kHz fixtures used by the pitch tests, including the clip the tests call the AI voice. Windows are the fixture's own slices, so this is not an alignment score. Gold is the app's sandhi-adjusted pinyin, i.e. the tone the UI expects.",
+    "clips": [
+      {
+        "id": "fix-ch1_01_H",
+        "n": 18,
+        "argmaxVsAppExpected": 0.556,
+        "verdictMatch": 0.611,
+        "verdictOff": 0.389,
+        "pitch": {
+          "nFramesInsideSyllable": 581,
+          "nBothVoiced": 380,
+          "voicingRecall": 0.89,
+          "voicingFalseAlarm": 0.299,
+          "voicingDisagreement": 0.16,
+          "grossPitchError": 0.018,
+          "octaveError": 0.0,
+          "within1Semitone": 0.871,
+          "medianAbsSemitone": 0.22,
+          "praatAbove400Hz": 0.0
+        }
+      },
+      {
+        "id": "fix-ch1_01_M",
+        "n": 18,
+        "argmaxVsAppExpected": 0.611,
+        "verdictMatch": 0.667,
+        "verdictOff": 0.333,
+        "pitch": {
+          "nFramesInsideSyllable": 568,
+          "nBothVoiced": 384,
+          "voicingRecall": 0.895,
+          "voicingFalseAlarm": 0.281,
+          "voicingDisagreement": 0.148,
+          "grossPitchError": 0.021,
+          "octaveError": 0.0,
+          "within1Semitone": 0.87,
+          "medianAbsSemitone": 0.24,
+          "praatAbove400Hz": 0.0
+        }
+      },
+      {
+        "id": "fix-ch1_01_P",
+        "n": 18,
+        "argmaxVsAppExpected": 0.667,
+        "verdictMatch": 0.722,
+        "verdictOff": 0.278,
+        "pitch": {
+          "nFramesInsideSyllable": 526,
+          "nBothVoiced": 338,
+          "voicingRecall": 0.901,
+          "voicingFalseAlarm": 0.252,
+          "voicingDisagreement": 0.143,
+          "grossPitchError": 0.006,
+          "octaveError": 0.0,
+          "within1Semitone": 0.92,
+          "medianAbsSemitone": 0.2,
+          "praatAbove400Hz": 0.0
+        }
+      },
+      {
+        "id": "fix-ch1_15_P",
+        "n": 40,
+        "argmaxVsAppExpected": 0.6,
+        "verdictMatch": 0.725,
+        "verdictOff": 0.275,
+        "pitch": {
+          "nFramesInsideSyllable": 982,
+          "nBothVoiced": 636,
+          "voicingRecall": 0.915,
+          "voicingFalseAlarm": 0.261,
+          "voicingDisagreement": 0.136,
+          "grossPitchError": 0.046,
+          "octaveError": 0.035,
+          "within1Semitone": 0.855,
+          "medianAbsSemitone": 0.32,
+          "praatAbove400Hz": 0.0
+        }
+      },
+      {
+        "id": "fix-xm_03_H",
+        "n": 6,
+        "argmaxVsAppExpected": 0.667,
+        "verdictMatch": 0.667,
+        "verdictOff": 0.333,
+        "pitch": {
+          "nFramesInsideSyllable": 177,
+          "nBothVoiced": 103,
+          "voicingRecall": 0.92,
+          "voicingFalseAlarm": 0.185,
+          "voicingDisagreement": 0.119,
+          "grossPitchError": 0.01,
+          "octaveError": 0.0,
+          "within1Semitone": 0.99,
+          "medianAbsSemitone": 0.11,
+          "praatAbove400Hz": 0.0
+        }
+      }
+    ]
+  },
+  "ownerTakeAlignment": {
+    "n": 19,
+    "rawFaSpans": {
+      "n": 19,
+      "missRate": 0.0,
+      "medianAbsStartMs": 46.6,
+      "medianAbsEndMs": 68.5,
+      "medianSignedStartMs": 46.6,
+      "medianSignedEndMs": -68.5,
+      "p90MaxEdgeMs": 190.6,
+      "within50Ms": 0.211,
+      "within100Ms": 0.579,
+      "medianBleedMs": 0.0,
+      "medianIou": 0.586
+    },
+    "afterSlicer": {
+      "n": 19,
+      "missRate": 0.0,
+      "medianAbsStartMs": 38.6,
+      "medianAbsEndMs": 50.0,
+      "medianSignedStartMs": 13.2,
+      "medianSignedEndMs": 45.0,
+      "p90MaxEdgeMs": 76.8,
+      "within50Ms": 0.421,
+      "within100Ms": 0.947,
+      "medianBleedMs": 0.0,
+      "medianIou": 0.785
+    },
+    "note": "Held-out hand bounds for one learner take. Not used for tone scores or the refit."
+  },
+  "storedContours": {
+    "human-heldout-fa": {
+      "argmax": {
+        "n": 496,
+        "accuracy": 0.577,
+        "matrix": {
+          "1": {
+            "1": 59,
+            "2": 19,
+            "3": 5,
+            "4": 27,
+            "none": 0
+          },
+          "2": {
+            "1": 26,
+            "2": 74,
+            "3": 10,
+            "4": 8,
+            "none": 1
+          },
+          "3": {
+            "1": 11,
+            "2": 32,
+            "3": 27,
+            "4": 9,
+            "none": 2
+          },
+          "4": {
+            "1": 21,
+            "2": 9,
+            "3": 28,
+            "4": 126,
+            "none": 2
+          }
+        },
+        "perTone": {
+          "1": {
+            "n": 110,
+            "recall": 0.536
+          },
+          "2": {
+            "n": 119,
+            "recall": 0.622
+          },
+          "3": {
+            "n": 81,
+            "recall": 0.333
+          },
+          "4": {
+            "n": 186,
+            "recall": 0.677
+          }
+        }
+      },
+      "shapeRule": {
+        "n": 496,
+        "accuracy": 0.478,
+        "matrix": {
+          "1": {
+            "1": 89,
+            "2": 0,
+            "3": 0,
+            "4": 4,
+            "none": 17
+          },
+          "2": {
+            "1": 44,
+            "2": 33,
+            "3": 1,
+            "4": 12,
+            "none": 29
+          },
+          "3": {
+            "1": 32,
+            "2": 3,
+            "3": 0,
+            "4": 23,
+            "none": 23
+          },
+          "4": {
+            "1": 40,
+            "2": 3,
+            "3": 0,
+            "4": 115,
+            "none": 28
+          }
+        },
+        "perTone": {
+          "1": {
+            "n": 110,
+            "recall": 0.809
+          },
+          "2": {
+            "n": 119,
+            "recall": 0.277
+          },
+          "3": {
+            "n": 81,
+            "recall": 0.0
+          },
+          "4": {
+            "n": 186,
+            "recall": 0.618
+          }
+        }
+      },
+      "verdict": {
+        "n": 496,
+        "matchRate": 0.712,
+        "offRate": 0.278,
+        "unclearRate": 0.01,
+        "matchButArgmaxWrong": 0.151,
+        "falseMatchWhenExpectedIsWrong": 0.2,
+        "nForced": 1488,
+        "oppositeShapeBlockedAMatch": 8
+      }
+    },
+    "human-heldout-cur": {
+      "argmax": {
+        "n": 496,
+        "accuracy": 0.562,
+        "matrix": {
+          "1": {
+            "1": 59,
+            "2": 20,
+            "3": 5,
+            "4": 26,
+            "none": 0
+          },
+          "2": {
+            "1": 28,
+            "2": 73,
+            "3": 11,
+            "4": 5,
+            "none": 2
+          },
+          "3": {
+            "1": 10,
+            "2": 30,
+            "3": 28,
+            "4": 10,
+            "none": 3
+          },
+          "4": {
+            "1": 25,
+            "2": 11,
+            "3": 27,
+            "4": 119,
+            "none": 4
+          }
+        },
+        "perTone": {
+          "1": {
+            "n": 110,
+            "recall": 0.536
+          },
+          "2": {
+            "n": 119,
+            "recall": 0.613
+          },
+          "3": {
+            "n": 81,
+            "recall": 0.346
+          },
+          "4": {
+            "n": 186,
+            "recall": 0.64
+          }
+        }
+      },
+      "shapeRule": {
+        "n": 496,
+        "accuracy": 0.468,
+        "matrix": {
+          "1": {
+            "1": 89,
+            "2": 0,
+            "3": 0,
+            "4": 4,
+            "none": 17
+          },
+          "2": {
+            "1": 45,
+            "2": 31,
+            "3": 1,
+            "4": 13,
+            "none": 29
+          },
+          "3": {
+            "1": 31,
+            "2": 3,
+            "3": 0,
+            "4": 23,
+            "none": 24
+          },
+          "4": {
+            "1": 39,
+            "2": 4,
+            "3": 0,
+            "4": 112,
+            "none": 31
+          }
+        },
+        "perTone": {
+          "1": {
+            "n": 110,
+            "recall": 0.809
+          },
+          "2": {
+            "n": 119,
+            "recall": 0.261
+          },
+          "3": {
+            "n": 81,
+            "recall": 0.0
+          },
+          "4": {
+            "n": 186,
+            "recall": 0.602
+          }
+        }
+      },
+      "verdict": {
+        "n": 496,
+        "matchRate": 0.698,
+        "offRate": 0.284,
+        "unclearRate": 0.018,
+        "matchButArgmaxWrong": 0.151,
+        "falseMatchWhenExpectedIsWrong": 0.202,
+        "nForced": 1488,
+        "oppositeShapeBlockedAMatch": 8
+      }
+    },
+    "ai-heldout-fa": {
+      "argmax": {
+        "n": 750,
+        "accuracy": 0.716,
+        "matrix": {
+          "1": {
+            "1": 157,
+            "2": 19,
+            "3": 7,
+            "4": 25,
+            "none": 0
+          },
+          "2": {
+            "1": 32,
+            "2": 105,
+            "3": 19,
+            "4": 16,
+            "none": 0
+          },
+          "3": {
+            "1": 9,
+            "2": 22,
+            "3": 117,
+            "4": 20,
+            "none": 0
+          },
+          "4": {
+            "1": 25,
+            "2": 4,
+            "3": 15,
+            "4": 158,
+            "none": 0
+          }
+        },
+        "perTone": {
+          "1": {
+            "n": 208,
+            "recall": 0.755
+          },
+          "2": {
+            "n": 172,
+            "recall": 0.61
+          },
+          "3": {
+            "n": 168,
+            "recall": 0.696
+          },
+          "4": {
+            "n": 202,
+            "recall": 0.782
+          }
+        }
+      },
+      "shapeRule": {
+        "n": 750,
+        "accuracy": 0.396,
+        "matrix": {
+          "1": {
+            "1": 124,
+            "2": 50,
+            "3": 0,
+            "4": 9,
+            "none": 25
+          },
+          "2": {
+            "1": 59,
+            "2": 62,
+            "3": 0,
+            "4": 23,
+            "none": 28
+          },
+          "3": {
+            "1": 32,
+            "2": 0,
+            "3": 2,
+            "4": 108,
+            "none": 26
+          },
+          "4": {
+            "1": 59,
+            "2": 1,
+            "3": 0,
+            "4": 109,
+            "none": 33
+          }
+        },
+        "perTone": {
+          "1": {
+            "n": 208,
+            "recall": 0.596
+          },
+          "2": {
+            "n": 172,
+            "recall": 0.36
+          },
+          "3": {
+            "n": 168,
+            "recall": 0.012
+          },
+          "4": {
+            "n": 202,
+            "recall": 0.54
+          }
+        }
+      },
+      "verdict": {
+        "n": 750,
+        "matchRate": 0.832,
+        "offRate": 0.168,
+        "unclearRate": 0.0,
+        "matchButArgmaxWrong": 0.119,
+        "falseMatchWhenExpectedIsWrong": 0.168,
+        "nForced": 2250,
+        "oppositeShapeBlockedAMatch": 3
+      }
+    },
+    "ai-tune-fa": {
+      "argmax": {
+        "n": 159,
+        "accuracy": 0.704,
+        "matrix": {
+          "1": {
+            "1": 32,
+            "2": 5,
+            "3": 2,
+            "4": 4,
+            "none": 2
+          },
+          "2": {
+            "1": 7,
+            "2": 21,
+            "3": 6,
+            "4": 0,
+            "none": 0
+          },
+          "3": {
+            "1": 1,
+            "2": 2,
+            "3": 20,
+            "4": 8,
+            "none": 0
+          },
+          "4": {
+            "1": 6,
+            "2": 0,
+            "3": 4,
+            "4": 39,
+            "none": 0
+          }
+        },
+        "perTone": {
+          "1": {
+            "n": 45,
+            "recall": 0.711
+          },
+          "2": {
+            "n": 34,
+            "recall": 0.618
+          },
+          "3": {
+            "n": 31,
+            "recall": 0.645
+          },
+          "4": {
+            "n": 49,
+            "recall": 0.796
+          }
+        }
+      },
+      "shapeRule": {
+        "n": 159,
+        "accuracy": 0.39,
+        "matrix": {
+          "1": {
+            "1": 28,
+            "2": 4,
+            "3": 0,
+            "4": 1,
+            "none": 12
+          },
+          "2": {
+            "1": 9,
+            "2": 9,
+            "3": 0,
+            "4": 6,
+            "none": 10
+          },
+          "3": {
+            "1": 2,
+            "2": 0,
+            "3": 0,
+            "4": 26,
+            "none": 3
+          },
+          "4": {
+            "1": 11,
+            "2": 2,
+            "3": 0,
+            "4": 25,
+            "none": 11
+          }
+        },
+        "perTone": {
+          "1": {
+            "n": 45,
+            "recall": 0.622
+          },
+          "2": {
+            "n": 34,
+            "recall": 0.265
+          },
+          "3": {
+            "n": 31,
+            "recall": 0.0
+          },
+          "4": {
+            "n": 49,
+            "recall": 0.51
+          }
+        }
+      },
+      "verdict": {
+        "n": 159,
+        "matchRate": 0.836,
+        "offRate": 0.151,
+        "unclearRate": 0.013,
+        "matchButArgmaxWrong": 0.151,
+        "falseMatchWhenExpectedIsWrong": 0.164,
+        "nForced": 477,
+        "oppositeShapeBlockedAMatch": 4
+      }
+    }
+  }
+}
