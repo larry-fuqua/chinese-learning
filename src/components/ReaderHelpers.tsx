@@ -13,7 +13,7 @@ import type { CharSpan } from "@/lib/align-audio";
 import { applyOwnership, normalizeTimestampUnit, sliceWindows, windowsFromAlignment } from "@/lib/align-audio";
 import { fetchAlignment } from "@/lib/align-client";
 import { displayPinyin } from "@/lib/pinyin";
-import { isHan } from "@/lib/text";
+import { canDefineWord, isHan } from "@/lib/text";
 import { bufferToBase64, decodeToMono } from "@/lib/wav";
 import { buildSyllablePitches, extractPitch } from "@/lib/pitch";
 export function SentenceLine({
@@ -47,20 +47,29 @@ export function SentenceLine({
         const start = hanOffset;
         const hanCount = chars.filter(isHan).length;
         hanOffset += hanCount;
+        const definable = canDefineWord(word.hanzi);
         const hint = word.note || notes[word.hanzi]?.usage || notes[word.hanzi]?.gloss;
         const ruby = displayPinyin(word.hanzi, word.pinyin);
         return (
           <span
             key={`${sentence.id}-${wi}`}
-            role="button"
-            tabIndex={-1}
-            className={`ruby-word word-btn ${
-              selectedWord === word.hanzi && active ? "active" : ""
-            } ${hint ? "has-note" : ""}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onWord(word);
-            }}
+            role={definable ? "button" : undefined}
+            tabIndex={definable ? -1 : undefined}
+            className={
+              definable
+                ? `ruby-word word-btn ${
+                    selectedWord === word.hanzi && active ? "active" : ""
+                  } ${hint ? "has-note" : ""}`
+                : "ruby-word"
+            }
+            onClick={
+              definable
+                ? (e) => {
+                    e.stopPropagation();
+                    onWord(word);
+                  }
+                : undefined
+            }
           >
             {showRuby && ruby ? <rt>{ruby}</rt> : <rt>&nbsp;</rt>}
             <span>

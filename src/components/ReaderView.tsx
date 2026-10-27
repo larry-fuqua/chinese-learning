@@ -100,8 +100,9 @@ export function ReaderView(p: ReaderViewProps) {
           </>
         }
       />
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <section className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto lg:flex lg:flex-col lg:overflow-hidden">
+        <div className="lg:flex lg:min-h-0 lg:flex-1 lg:flex-row lg:overflow-hidden">
+        <section className="lg:flex lg:min-h-0 lg:min-w-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
           <div className="shrink-0 border-b border-[color-mix(in_oklab,var(--color-ink)_10%,transparent)] px-4 py-3 sm:px-6">
             <div className="flex flex-wrap items-center gap-2 font-[family-name:var(--font-sans)] text-sm">
               <button
@@ -165,7 +166,7 @@ export function ReaderView(p: ReaderViewProps) {
               </p>
             ) : null}
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-6">
+          <div className="px-4 py-3 sm:px-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
             {bookTitle ? (
               <p className="mb-3 font-[family-name:var(--font-sans)] text-xs uppercase tracking-[0.16em] text-ink-soft">
                 {bookTitle}
@@ -238,7 +239,7 @@ export function ReaderView(p: ReaderViewProps) {
             prepareNotes={prepareNotes}
             saveNote={saveNote}
           />
-      </div>
+        </div>
       <div className="shrink-0">
         {graph ? (
           <PitchGraph
@@ -269,6 +270,7 @@ export function ReaderView(p: ReaderViewProps) {
             Hear a sentence to see its pitch graph
           </div>
         )}
+      </div>
       </div>
     </div>
   );

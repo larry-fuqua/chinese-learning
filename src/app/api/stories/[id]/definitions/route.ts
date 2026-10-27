@@ -4,6 +4,7 @@ import { unauthorized, privateJson } from "@/lib/guard";
 import { errorJson, readJsonLimited } from "@/lib/http";
 import { getStory } from "@/lib/story-store";
 import { isStoryId } from "@/lib/story-validate";
+import { canDefineWord } from "@/lib/text";
 import type { NoteSource } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -38,6 +39,7 @@ export async function POST(request: Request, context: RouteContext) {
     const hanzi = body.hanzi?.trim() ?? "";
     if (!isStoryId(sentenceId)) return errorJson(400, "Invalid sentence id.");
     if (!hanzi || hanzi.length > 80) return errorJson(400, "hanzi is required");
+    if (!canDefineWord(hanzi)) return errorJson(400, "Definitions are for Chinese words.");
 
     const story = await getStory(id);
     if (!story) return errorJson(404, "Story not found.");

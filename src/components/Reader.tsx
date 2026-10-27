@@ -6,13 +6,13 @@ import type { AlignSpan } from "@/lib/align-audio";
 import { apiFetch } from "@/lib/api-fetch";
 import { playBuffer, playSlice, startRecorder, type Recorder } from "@/lib/audio";
 import { buildSyllablePitches, buildTakeGraph, extractPitch, sliceContour, speakerStats } from "@/lib/pitch";
-import { practiceFeedbackLines } from "@/lib/practice-graph";
+import { drawnPracticeContour, practiceFeedbackLines, voicedTimeRange } from "@/lib/practice-graph";
 import { gradeContour } from "@/lib/tone-model";
 import { PRACTICE_TTS_SPEED } from "@/lib/tts-key";
 import { visibleUserTake } from "@/lib/take-display";
 import { bufferToBase64, decodeToMono } from "@/lib/wav";
 import { getBook, getStory, saveStory, upsertNote } from "@/lib/storage";
-import { compareHanzi, glueOrphanPunct, isHan, spokenReading } from "@/lib/text";
+import { canDefineWord, compareHanzi, glueOrphanPunct, isHan, spokenReading } from "@/lib/text";
 import type { CharSpan } from "@/lib/align-audio";
 import type {
   Note,
@@ -485,17 +485,20 @@ export function Reader({ storyId }: { storyId: string }) {
   }, [ensureTts, practiceRecording, recording, sentence, speed, story]);
   const selectWord = useCallback(
     (index: number, word: Word) => {
+      if (!canDefineWord(word.hanzi)) return;
       const chosen = storyRef.current?.sentences[index];
       setActive(index);
       setSelectedWord(word.hanzi);
       setDraft(storyRef.current?.notes[word.hanzi] ?? emptyNote(word));
       setEditing(false);
-      if (chosen) setUsage({ key: `${chosen.id}|${word.hanzi}`, note: null, pending: true });
+      if (!chosen) return;
+      const key = `${chosen.id}|${word.hanzi}`;
+      setUsage((current) => (current.key === key ? current : { key, note: null, pending: true }));
     },
     [],
   );
   useEffect(() => {
-    if (!story || !sentence || !selectedWord) return;
+    if (!story || !sentence || !selectedWord || !canDefineWord(selectedWord)) return;
     const key = `${sentence.id}|${selectedWord}`;
     const word = sentence.words.find((item) => item.hanzi === selectedWord);
     let cancel = false;
@@ -596,17 +599,25 @@ export function Reader({ storyId }: { storyId: string }) {
       const decoded = await decodeToMono(audio);
       const duration = decoded.samples.length / decoded.sampleRate;
       const points = extractPitch(decoded.samples, decoded.sampleRate);
-      const semitones = sliceContour(points, 0, duration);
-      const voiced = semitones.some((value) => value != null);
+      const range = voicedTimeRange(points, duration);
+      const semitones = sliceContour(points, range?.start ?? 0, range?.end ?? duration);
+      const drawn = drawnPracticeContour(semitones);
+      const voiced = drawn.some((value) => value != null);
       const stats = speakerStats(points);
-      const graded = gradeContour(semitones, stats.rangeSt, duration, 0, syl.expectedTone);
+      const graded = gradeContour(
+        drawn,
+        stats.rangeSt,
+        range ? range.end - range.start : duration,
+        0,
+        syl.expectedTone,
+      );
       const lines = voiced
         ? practiceFeedbackLines({
             who: "model",
             expectedTone: syl.expectedTone,
             heardTone: graded.tone,
             pExpected: graded.pExpected,
-            contour: semitones,
+            contour: drawn,
           })
         : [];
       const clip: PracticeClip = {
@@ -648,9 +659,17 @@ export function Reader({ storyId }: { storyId: string }) {
         practiceRecorderRef.current = null;
         const duration = take.samples.length / take.sampleRate;
         const points = extractPitch(take.samples, take.sampleRate);
-        const semitones = sliceContour(points, 0, Math.max(duration, 0.01));
+        const range = voicedTimeRange(points, duration);
+        const semitones = sliceContour(points, range?.start ?? 0, range?.end ?? Math.max(duration, 0.01));
+        const drawn = drawnPracticeContour(semitones);
         const stats = speakerStats(points);
-        const graded = gradeContour(semitones, stats.rangeSt, duration, 0, syl.expectedTone);
+        const graded = gradeContour(
+          drawn,
+          stats.rangeSt,
+          range ? range.end - range.start : duration,
+          0,
+          syl.expectedTone,
+        );
         const reading = spokenReading(syl.pinyin, syl.expectedTone);
         const key = `${current.id}|${index}|${reading}`;
         const lines = practiceFeedbackLines({
@@ -658,7 +677,7 @@ export function Reader({ storyId }: { storyId: string }) {
           expectedTone: syl.expectedTone,
           heardTone: graded.tone,
           pExpected: graded.pExpected,
-          contour: semitones,
+          contour: drawn,
         });
         const clip: PracticeClip = {
           semitones,

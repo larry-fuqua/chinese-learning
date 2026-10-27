@@ -5,7 +5,17 @@ import path from "node:path";
 import { test } from "node:test";
 import { GET, PUT } from "../src/app/api/stories/[id]/practice/[sentenceId]/[index]/route";
 import { classifyTone } from "../src/lib/pitch";
-import { practiceFeedback, practiceFeedbackLines, toneGraphModel, toneGraphUser } from "../src/lib/practice-graph";
+import {
+  drawnPracticeContour,
+  practiceFeedback,
+  practiceFeedbackLines,
+  practicePlotAxis,
+  practiceWindowSec,
+  voicedTimeRange,
+  toneGraphModel,
+  toneGraphUser,
+  voicedSpan,
+} from "../src/lib/practice-graph";
 import { deleteStory } from "../src/lib/story-store";
 import { spokenReading } from "../src/lib/text";
 import { ttsCacheKey } from "../src/lib/tts-key";
@@ -38,6 +48,55 @@ test("the tone graph uses the clean clip and hides You until a recite", () => {
   assert.equal(toneGraphUser(null), null);
   assert.equal(toneGraphUser([null, null]), null);
   assert.deepEqual(toneGraphUser(rising), rising);
+});
+
+test("a practice clip is trimmed to its voiced run and shares one scale", () => {
+  const quietRise = [
+    null, null, null, null,
+    -2.2, -1.4, -0.4, 0.6, 1.4, 2.2,
+    null, null, null, null, null, null,
+  ];
+  const quietFall = [
+    null, null,
+    2.0, 1.2, 0.2, -0.8, -1.6, -2.4,
+    null, null, null, null, null, null, null, null,
+  ];
+  const riseSpan = voicedSpan(quietRise);
+  assert.deepEqual(riseSpan, { start: 3, end: 10 });
+  const drawn = drawnPracticeContour(quietRise);
+  assert.equal(drawn.length, 8);
+  assert.equal(drawn.includes(2.2), true);
+  assert.equal(drawn.includes(null), true);
+  assert.equal(classifyTone(drawn), 2);
+  assert.equal(classifyTone(drawn), classifyTone(quietRise));
+  const note = practiceFeedback({
+    who: "model",
+    expectedTone: 2,
+    heardTone: 4,
+    pExpected: 0.2,
+    contour: drawn,
+  });
+  assert.match(note, /shape matches/);
+  assert.equal(note.includes("shape is off"), false);
+  const axis = practicePlotAxis([drawn, drawnPracticeContour(quietFall)]);
+  assert.ok(axis.min < -2.4);
+  assert.ok(axis.max > 2.2);
+  assert.ok(axis.max - axis.min < 12);
+  const longTake = practiceWindowSec(quietFall, 2.6);
+  assert.ok(longTake < 2.6);
+  assert.ok(longTake > 0.4);
+  const range = voicedTimeRange(
+    [
+      { t: 0.2, hz: null },
+      { t: 1.1, hz: 140 },
+      { t: 1.5, hz: 220 },
+      { t: 2.2, hz: null },
+    ],
+    2.6,
+  );
+  assert.ok(range);
+  assert.ok(range.start >= 1.0 && range.start < 1.1);
+  assert.ok(range.end > 1.5 && range.end <= 1.6);
 });
 
 test("practice feedback follows the drawn contour", () => {

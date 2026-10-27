@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { POST } from "../src/app/api/stories/[id]/definitions/route";
 import { definitionKey } from "../src/lib/definitions";
 import { deleteStory } from "../src/lib/story-store";
+import { canDefineWord } from "../src/lib/text";
 import { API_KEY, dataDir } from "./env";
 
 const story = {
@@ -44,6 +45,28 @@ function post(body: unknown) {
     context(),
   );
 }
+
+test("punctuation and other non-Han tokens are not defined", async () => {
+  assert.equal(canDefineWord("中学生"), true);
+  assert.equal(canDefineWord("，"), false);
+  assert.equal(canDefineWord("。"), false);
+  assert.equal(canDefineWord("13"), false);
+  let calls = 0;
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response("no", { status: 500 });
+  };
+  try {
+    const comma = await post({ sentenceId: "def-sentence", hanzi: "，" });
+    assert.equal(comma.status, 400);
+    const digits = await post({ sentenceId: "def-sentence", hanzi: "13" });
+    assert.equal(digits.status, 400);
+    assert.equal(calls, 0);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
 
 test("a missing definition is generated once and reused for the same word and sentence", async () => {
   await fs.mkdir(path.join(dataDir, "stories"), { recursive: true });

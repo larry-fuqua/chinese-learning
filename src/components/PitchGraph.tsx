@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { canonicalTone, classifyTone, strokeWithGaps } from "@/lib/pitch";
-import { toneGraphModel, toneGraphUser } from "@/lib/practice-graph";
+import { drawnPracticeContour, toneGraphModel, toneGraphUser } from "@/lib/practice-graph";
 import {
   binCenterX,
   characterPxPerSec,
@@ -520,28 +520,35 @@ function SyllableCanvas({
         ctx.stroke();
       }
 
-      const px = characterPxPerSec(width, durations);
-      const modelContour = toneGraphModel(syllable.refSemitones, practiceModel?.semitones ?? null);
+      const modelRaw = toneGraphModel(syllable.refSemitones, practiceModel?.semitones ?? null);
       const modelIsPractice =
         practiceModel != null && practiceModel.semitones.some((value) => value != null);
-      const modelDur = modelIsPractice
-        ? practiceModel.duration
-        : Math.max(0, syllable.end - syllable.start);
-      const userContour = toneGraphUser(practiceUser?.semitones ?? null);
-      const userDur = userContour && practiceUser ? practiceUser.duration : 0;
-      const modelW = modelDur * px;
-      const userW = userDur * px;
+      const userRaw = toneGraphUser(practiceUser?.semitones ?? null);
+      const modelDraw = modelIsPractice ? drawnPracticeContour(modelRaw) : modelRaw;
+      const userDraw = userRaw ? drawnPracticeContour(userRaw) : null;
       const template = canonicalTone(syllable.expectedTone);
+      const practiceOn = modelIsPractice || userDraw != null;
+      const plotAxis = practiceOn ? sharedPitchAxis([modelDraw, userDraw ?? [], template]) : axis;
       ctx.save();
       ctx.beginPath();
       ctx.rect(0, 0, width, height);
       ctx.clip();
-      if (modelW > 1) {
-        drawLine(ctx, template, modelW, height, "#8aa88f", 1.5, true, axis);
-        drawLine(ctx, modelContour, modelW, height, "#e8c27a", 2.4, false, axis);
-      }
-      if (userW > 1 && userContour) {
-        drawLine(ctx, userContour, userW, height, "#6eb5ff", 3.2, false, axis);
+      if (practiceOn) {
+        if (modelDraw.some((value) => value != null)) {
+          drawLine(ctx, template, width, height, "#8aa88f", 1.5, true, plotAxis);
+          drawLine(ctx, modelDraw, width, height, "#e8c27a", 2.4, false, plotAxis);
+        }
+        if (userDraw && userDraw.some((value) => value != null)) {
+          drawLine(ctx, userDraw, width, height, "#6eb5ff", 3.2, false, plotAxis);
+        }
+      } else {
+        const px = characterPxPerSec(width, durations);
+        const modelDur = Math.max(0, syllable.end - syllable.start);
+        const modelW = modelDur * px;
+        if (modelW > 1) {
+          drawLine(ctx, template, modelW, height, "#8aa88f", 1.5, true, axis);
+          drawLine(ctx, modelDraw, modelW, height, "#e8c27a", 2.4, false, axis);
+        }
       }
       ctx.restore();
     };

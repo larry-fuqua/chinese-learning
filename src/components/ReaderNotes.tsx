@@ -33,11 +33,17 @@ export function ReaderNotes(p: {
     saveNote,
   } = p;
   const openNotes = useRef(new Map<string, boolean>());
+  const asideRef = useRef<HTMLElement>(null);
   const noteKey = `${sentenceId}|${selectedWord ?? ""}`;
   const [expanded, setExpanded] = useState(false);
   useEffect(() => {
     setExpanded(openNotes.current.get(noteKey) ?? false);
   }, [noteKey]);
+  useEffect(() => {
+    if (!selectedWord) return;
+    if (!window.matchMedia("(max-width: 1023px)").matches) return;
+    asideRef.current?.scrollIntoView({ block: "nearest" });
+  }, [noteKey, selectedWord]);
 
   function toggleOpen() {
     setExpanded((value) => {
@@ -52,7 +58,10 @@ export function ReaderNotes(p: {
   const showAuto = note?.source === "ai" && Boolean(note.gloss);
 
   return (
-    <aside className="flex max-h-[38%] min-h-0 w-full shrink-0 flex-col border-t border-[color-mix(in_oklab,var(--color-ink)_10%,transparent)] bg-[color-mix(in_oklab,white_28%,var(--color-paper))] lg:max-h-none lg:w-80 lg:border-l lg:border-t-0">
+    <aside
+      ref={asideRef}
+      className="flex w-full shrink-0 flex-col border-t border-[color-mix(in_oklab,var(--color-ink)_10%,transparent)] bg-[color-mix(in_oklab,white_28%,var(--color-paper))] lg:min-h-0 lg:w-80 lg:overflow-hidden lg:border-l lg:border-t-0"
+    >
       <div className="flex shrink-0 items-center justify-between px-4 py-3 lg:px-5">
         <p className="font-[family-name:var(--font-sans)] text-[11px] uppercase tracking-[0.2em] text-ink-soft">
           Notes

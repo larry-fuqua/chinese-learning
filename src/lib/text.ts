@@ -23,6 +23,11 @@ export function isPunctOnly(text: string): boolean {
   return PUNCT_ONLY.test(text.trim());
 }
 
+/** A definition is for a Chinese word. Punctuation and other non-Han tokens are not. */
+export function canDefineWord(hanzi: string): boolean {
+  return onlyHanzi(hanzi).length > 0;
+}
+
 export function splitSentences(text: string): string[] {
   const normalized = text.replace(/\r\n/g, "\n").trim();
   if (!normalized) return [];
