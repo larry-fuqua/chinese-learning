@@ -2,6 +2,7 @@ import "./env";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { POST as align } from "../src/app/api/align/route";
+import { bearer } from "./env";
 import { windowSpansPause, windowsFromAlignment } from "../src/lib/align-audio";
 import { alignmentSyllables } from "../src/lib/pinyin";
 
@@ -14,6 +15,25 @@ test("align route rejects an anonymous caller", async () => {
     }),
   );
   assert.equal(response.status, 401);
+});
+
+test("a missing align sidecar returns no spans instead of a failed request", async () => {
+  const previous = process.env.ALIGN_URL;
+  delete process.env.ALIGN_URL;
+  try {
+    const response = await align(
+      new Request("http://localhost/api/align", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...bearer() },
+        body: JSON.stringify({ text: "啊", syllables: ["a"], audioBase64: "YQ==" }),
+      }),
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { spans: [] });
+  } finally {
+    if (previous == null) delete process.env.ALIGN_URL;
+    else process.env.ALIGN_URL = previous;
+  }
 });
 
 test("alignment syllables come from the stored pinyin", () => {

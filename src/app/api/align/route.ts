@@ -16,8 +16,13 @@ type AlignBody = {
 
 /**
  * Proxy a sentence to the forced-alignment sidecar.
- * A missing sidecar is a 503. The caller keeps the previous timing method.
+ * A missing sidecar returns an empty span list so the caller keeps token
+ * timings. The response stays successful: this fallback is expected, and a
+ * failed status would show up as a browser console error.
  */
+function noSpans() {
+  return NextResponse.json({ spans: [] }, { headers: { "Cache-Control": "private, no-store" } });
+}
 export async function POST(request: Request) {
   const denied = unauthorized(request);
   if (denied) return denied;
@@ -39,7 +44,7 @@ export async function POST(request: Request) {
     const base = process.env.ALIGN_URL?.replace(/\/$/, "");
     if (!base) {
       console.error("align sidecar skipped: ALIGN_URL is not set");
-      return errorJson(503, "align unavailable");
+      return noSpans();
     }
     const chars = [...text].filter((ch) => ch >= "\u3400" && ch <= "\u9fff");
     const response = await fetch(`${base}/align`, {
@@ -50,7 +55,7 @@ export async function POST(request: Request) {
     });
     if (!response.ok) {
       console.error("align sidecar failed", response.status);
-      return errorJson(503, "align unavailable");
+      return noSpans();
     }
     const payload = (await response.json()) as {
       spans?: { char?: string; start?: number; end?: number }[];
@@ -70,11 +75,11 @@ export async function POST(request: Request) {
       : [];
     if (!spans.length) {
       console.error("align sidecar failed: no spans");
-      return errorJson(503, "align unavailable");
+      return noSpans();
     }
     return NextResponse.json({ spans }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (err) {
     console.error("align sidecar failed", err instanceof Error ? err.message : "unknown");
-    return errorJson(503, "align unavailable");
+    return noSpans();
   }
 }

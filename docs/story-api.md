@@ -332,7 +332,7 @@ The pitch contour is semitones relative to that speaker's median over the senten
 { "spans": [{ "char": "你", "start": 0.12, "end": 0.31 }, { "char": "好", "start": 0.34, "end": 0.62 }] }
 ```
 
-`503` when `ALIGN_URL` is unset or the sidecar errors. The reader then uses token timings. The sidecar listens on the Compose network only.
+When `ALIGN_URL` is unset or the sidecar errors, the response is `{ "spans": [] }` and the reader keeps token timings. The request itself succeeds, so that handled fallback is not a browser error. The sidecar listens on the Compose network only.
 
 ## Last recite take
 

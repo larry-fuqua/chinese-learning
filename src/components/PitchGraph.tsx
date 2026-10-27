@@ -45,7 +45,7 @@ export function PitchGraph({
   onTogglePreviousTake,
   practiceModel,
   practiceUser,
-  practiceNote,
+  practiceLines,
   practiceBusy,
   practiceRecording,
   onPracticeHear,
@@ -67,7 +67,7 @@ export function PitchGraph({
   onTogglePreviousTake: () => void;
   practiceModel: PracticeContour | null;
   practiceUser: PracticeContour | null;
-  practiceNote: string;
+  practiceLines: string[];
   practiceBusy: "" | "hear" | "recite";
   practiceRecording: boolean;
   onPracticeHear: () => void;
@@ -103,6 +103,26 @@ export function PitchGraph({
     userText: hasUserTake ? graph.heard : "",
     previous: showingPreviousTake,
   });
+  const practiceYou = practiceUser != null && practiceUser.semitones.some((value) => value != null);
+  const youOnScreen = hasUserTake || practiceYou;
+  const sliceNote = syllable
+    ? pitchTrackNote({
+        track: replayTrack,
+        hasUserTake,
+        expectedTone: syllable.expectedTone,
+        heardTone: syllable.heardTone,
+        modelHeardTone: syllable.modelHeardTone,
+        pExpected: syllable.pExpected,
+        modelPExpected: syllable.modelPExpected,
+        userStart: syllable.userStart,
+        start: syllable.start,
+        end: syllable.end,
+        shapeTone: classifyTone(
+          replayTrack === "model" ? syllable.refSemitones : syllable.userSemitones,
+        ),
+      })
+    : "";
+  const headerVerdict = practiceLines.length ? practiceLines.slice(1) : sliceNote ? [sliceNote.replace(/^ · /, "")] : [];
 
   return (
     <section className="bg-graph text-paper">
@@ -112,27 +132,17 @@ export function PitchGraph({
             Pitch
           </p>
           {syllable ? (
-            <p className="min-w-0 truncate font-[family-name:var(--font-sans)] text-xs text-paper/80">
-              <span className="hanzi text-base text-paper">{syllable.hanzi}</span>{" "}
-              {syllable.pinyin} · {toneName(syllable.expectedTone)}
-              {difference ? ` · ${difference}` : ""}
-              {syllable
-                ? pitchTrackNote({
-                    track: replayTrack,
-                    hasUserTake,
-                    expectedTone: syllable.expectedTone,
-                    heardTone: syllable.heardTone,
-                    modelHeardTone: syllable.modelHeardTone,
-                    pExpected: syllable.pExpected,
-                    modelPExpected: syllable.modelPExpected,
-                    userStart: syllable.userStart,
-                    start: syllable.start,
-                    end: syllable.end,
-                    shapeTone: classifyTone(
-                      replayTrack === "model" ? syllable.refSemitones : syllable.userSemitones,
-                    ),
-                  })
-                : ""}
+            <p className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 font-[family-name:var(--font-sans)] text-xs text-paper/80">
+              <span className="whitespace-nowrap">
+                <span className="hanzi text-base text-paper">{syllable.hanzi}</span>{" "}
+                {syllable.pinyin} · {toneName(syllable.expectedTone)}
+                {difference ? ` · ${difference}` : ""}
+              </span>
+              {headerVerdict.map((line, index) => (
+                <span key={`${index}-${line}`} className="whitespace-nowrap">
+                  · {line}
+                </span>
+              ))}
             </p>
           ) : null}
           {caption ? (
@@ -151,17 +161,19 @@ export function PitchGraph({
               )}
             </p>
           ) : null}
-          <div className="ml-auto flex gap-3 font-[family-name:var(--font-sans)] text-[11px] text-paper/60">
-            <span>
-              <i className="mr-1 inline-block h-0.5 w-3 align-middle bg-ref" />
+          <div className="ml-auto flex gap-3 font-[family-name:var(--font-sans)] text-[11px] text-paper/90">
+            <span className="inline-flex items-center gap-1.5">
+              <i className="inline-block h-[3px] w-3.5 rounded-full bg-ref" />
               Ref
             </span>
-            <span className={hasUserTake ? "" : "opacity-40"}>
-              <i className="mr-1 inline-block h-0.5 w-3 align-middle bg-you" />
+            <span className={`inline-flex items-center gap-1.5 ${youOnScreen ? "" : "opacity-40"}`}>
+              <i className="inline-block h-[3px] w-3.5 rounded-full bg-you" />
               You
             </span>
-            <span>
-              <i className="mr-1 inline-block h-0.5 w-3 align-middle bg-template" />
+            <span className="inline-flex items-center gap-1.5">
+              <svg width="14" height="4" viewBox="0 0 14 4" aria-hidden="true" className="text-template">
+                <line x1="0" y1="2" x2="14" y2="2" stroke="currentColor" strokeWidth="2" strokeDasharray="3 2" />
+              </svg>
               Tone
             </span>
           </div>
@@ -181,7 +193,7 @@ export function PitchGraph({
             showUser={showUser}
             previousTake={showingPreviousTake}
           />
-          <div className="w-full shrink-0 sm:w-52">
+          <div className="w-full shrink-0 sm:w-64">
             <SyllableCanvas
               syllable={syllable}
               practiceModel={practiceModel}
@@ -211,10 +223,14 @@ export function PitchGraph({
                 </button>
               </div>
             ) : null}
-            {practiceNote ? (
-              <p className="mt-1.5 font-[family-name:var(--font-sans)] text-[11px] leading-snug text-paper/75">
-                {practiceNote}
-              </p>
+            {practiceLines.length ? (
+              <div className="mt-1.5 space-y-0.5 font-[family-name:var(--font-sans)] text-[11px] leading-snug text-paper/90">
+                {practiceLines.map((line, index) => (
+                  <p key={`${index}-${line}`} className="whitespace-nowrap">
+                    {line}
+                  </p>
+                ))}
+              </div>
             ) : null}
           </div>
         </div>
@@ -412,7 +428,7 @@ function SentenceCanvas({
             true,
           );
           clipDraw(ctx, layout.gutter, layout.user, layout.plotWidth, () => {
-            drawLineInSlot(ctx, s.userSemitones, ux0, ux1, layout.user!, "#f3ead8", 2.2, axis);
+            drawLineInSlot(ctx, s.userSemitones, ux0, ux1, layout.user!, "#6eb5ff", 2.2, axis);
           });
           userLabels.push({ index: i, hanzi: s.hanzi, x0: ux0, x1: ux1 });
         }
@@ -525,7 +541,7 @@ function SyllableCanvas({
         drawLine(ctx, modelContour, modelW, height, "#e8c27a", 2.4, false, axis);
       }
       if (userW > 1 && userContour) {
-        drawLine(ctx, userContour, userW, height, "#f3ead8", 3.2, false, axis);
+        drawLine(ctx, userContour, userW, height, "#6eb5ff", 3.2, false, axis);
       }
       ctx.restore();
     };
@@ -575,8 +591,8 @@ function paintSlot(
   playing: boolean,
   user = false,
 ) {
-  if (playing) ctx.fillStyle = user ? "rgba(243, 234, 216, 0.28)" : "rgba(232, 194, 122, 0.32)";
-  else if (selected) ctx.fillStyle = user ? "rgba(243, 234, 216, 0.08)" : "rgba(232, 194, 122, 0.12)";
+  if (playing) ctx.fillStyle = user ? "rgba(110, 181, 255, 0.28)" : "rgba(232, 194, 122, 0.32)";
+  else if (selected) ctx.fillStyle = user ? "rgba(110, 181, 255, 0.12)" : "rgba(232, 194, 122, 0.12)";
   else return;
   ctx.fillRect(x0, band.top, Math.max(2, x1 - x0), band.height);
 }

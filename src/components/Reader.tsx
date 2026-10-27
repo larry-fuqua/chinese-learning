@@ -6,7 +6,7 @@ import type { AlignSpan } from "@/lib/align-audio";
 import { apiFetch } from "@/lib/api-fetch";
 import { playBuffer, playSlice, startRecorder, type Recorder } from "@/lib/audio";
 import { buildSyllablePitches, buildTakeGraph, extractPitch, sliceContour, speakerStats } from "@/lib/pitch";
-import { practiceFeedback } from "@/lib/practice-graph";
+import { practiceFeedbackLines } from "@/lib/practice-graph";
 import { gradeContour } from "@/lib/tone-model";
 import { PRACTICE_TTS_SPEED } from "@/lib/tts-key";
 import { visibleUserTake } from "@/lib/take-display";
@@ -40,6 +40,7 @@ type PracticeClip = {
   semitones: (number | null)[];
   duration: number;
   note: string;
+  lines: string[];
 };
 
 export function Reader({ storyId }: { storyId: string }) {
@@ -599,19 +600,21 @@ export function Reader({ storyId }: { storyId: string }) {
       const voiced = semitones.some((value) => value != null);
       const stats = speakerStats(points);
       const graded = gradeContour(semitones, stats.rangeSt, duration, 0, syl.expectedTone);
+      const lines = voiced
+        ? practiceFeedbackLines({
+            who: "model",
+            expectedTone: syl.expectedTone,
+            heardTone: graded.tone,
+            pExpected: graded.pExpected,
+            contour: semitones,
+          })
+        : [];
       const clip: PracticeClip = {
         audio,
         semitones,
         duration,
-        note: voiced
-          ? practiceFeedback({
-              who: "model",
-              expectedTone: syl.expectedTone,
-              heardTone: graded.tone,
-              pExpected: graded.pExpected,
-              contour: semitones,
-            })
-          : "",
+        note: lines.join(" · "),
+        lines,
       };
       practiceModelRef.current.set(key, clip);
       setPracticeView({
@@ -650,16 +653,18 @@ export function Reader({ storyId }: { storyId: string }) {
         const graded = gradeContour(semitones, stats.rangeSt, duration, 0, syl.expectedTone);
         const reading = spokenReading(syl.pinyin, syl.expectedTone);
         const key = `${current.id}|${index}|${reading}`;
+        const lines = practiceFeedbackLines({
+          who: "yours",
+          expectedTone: syl.expectedTone,
+          heardTone: graded.tone,
+          pExpected: graded.pExpected,
+          contour: semitones,
+        });
         const clip: PracticeClip = {
           semitones,
           duration,
-          note: practiceFeedback({
-            who: "yours",
-            expectedTone: syl.expectedTone,
-            heardTone: graded.tone,
-            pExpected: graded.pExpected,
-            contour: semitones,
-          }),
+          note: lines.join(" · "),
+          lines,
         };
         practiceUserRef.current.set(key, clip);
         setPracticeView({
@@ -972,12 +977,12 @@ export function Reader({ storyId }: { storyId: string }) {
           ? { semitones: practiceView.user.semitones, duration: practiceView.user.duration }
           : null
       }
-      practiceNote={
-        practiceView?.user?.note
-          ? practiceView.user.note
+      practiceLines={
+        practiceView?.user?.lines?.length
+          ? practiceView.user.lines
           : practiceView?.model?.semitones.some((value) => value != null)
-            ? practiceView.model.note
-            : ""
+            ? (practiceView.model.lines ?? [])
+            : []
       }
       practiceBusy={practiceBusy}
       practiceRecording={practiceRecording}

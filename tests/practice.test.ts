@@ -5,7 +5,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { GET, PUT } from "../src/app/api/stories/[id]/practice/[sentenceId]/[index]/route";
 import { classifyTone } from "../src/lib/pitch";
-import { practiceFeedback, toneGraphModel, toneGraphUser } from "../src/lib/practice-graph";
+import { practiceFeedback, practiceFeedbackLines, toneGraphModel, toneGraphUser } from "../src/lib/practice-graph";
 import { deleteStory } from "../src/lib/story-store";
 import { spokenReading } from "../src/lib/text";
 import { ttsCacheKey } from "../src/lib/tts-key";
@@ -53,6 +53,19 @@ test("practice feedback follows the drawn contour", () => {
   assert.match(wrong, /shape is off/);
   assert.equal(wrong.includes("shape matches"), false);
   assert.match(wrong, /yours 4th · falling/);
+  const wrongLines = practiceFeedbackLines({
+    who: "yours",
+    expectedTone: 2,
+    heardTone: 2,
+    pExpected: 0.9,
+    contour: falling,
+  });
+  assert.deepEqual(wrongLines, [
+    "Tone 2 · 2nd · rising",
+    "yours 4th · falling",
+    "shape is off",
+  ]);
+  assert.equal(wrongLines.join(" · "), wrong);
   const right = practiceFeedback({
     who: "yours",
     expectedTone: 2,

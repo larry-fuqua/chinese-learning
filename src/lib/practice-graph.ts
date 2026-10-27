@@ -23,13 +23,14 @@ export function toneGraphUser(
  * Tone line for the contour drawn on the character graph.
  * The shape class is taken from that contour, so the words follow the line.
  */
-export function practiceFeedback(opts: {
+/** One short clause per line, so a verdict such as "shape is off" stays intact. */
+export function practiceFeedbackLines(opts: {
   who: "model" | "yours";
   expectedTone: number;
   heardTone: number | null;
   pExpected: number | null;
   contour: readonly (number | null)[];
-}): string {
+}): string[] {
   const shape = classifyTone([...opts.contour]);
   const heard = shape != null && shape !== 5 ? shape : opts.heardTone;
   const drawnAgrees = shape != null && shape !== 5 && shape === opts.expectedTone;
@@ -44,6 +45,19 @@ export function practiceFeedback(opts: {
           pExpected: drawnAgrees ? 1 : opts.pExpected,
           shapeTone: shape,
         });
-  const heardLabel = heard != null ? ` · ${opts.who} ${toneName(heard)}` : "";
-  return `Tone ${opts.expectedTone} · ${toneName(opts.expectedTone)}${heardLabel}${verdict}`;
+  const lines = [`Tone ${opts.expectedTone} · ${toneName(opts.expectedTone)}`];
+  if (heard != null) lines.push(`${opts.who} ${toneName(heard)}`);
+  const detail = verdict.replace(/^ · /, "").trim();
+  if (detail) lines.push(detail);
+  return lines;
+}
+
+export function practiceFeedback(opts: {
+  who: "model" | "yours";
+  expectedTone: number;
+  heardTone: number | null;
+  pExpected: number | null;
+  contour: readonly (number | null)[];
+}): string {
+  return practiceFeedbackLines(opts).join(" · ");
 }

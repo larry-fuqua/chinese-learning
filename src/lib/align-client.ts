@@ -19,15 +19,9 @@ export async function fetchAlignment(opts: {
         audioBase64: opts.audioBase64,
       }),
     });
-    if (!response.ok) {
-      console.error("align unavailable; using token timings");
-      return null;
-    }
+    if (!response.ok) return null;
     const body = (await response.json()) as { spans?: AlignSpan[] };
-    if (!Array.isArray(body.spans) || !body.spans.length) {
-      console.error("align unavailable; using token timings");
-      return null;
-    }
+    if (!Array.isArray(body.spans) || !body.spans.length) return null;
     return body.spans.filter(
       (span) =>
         !!span &&
@@ -35,8 +29,7 @@ export async function fetchAlignment(opts: {
         Number.isFinite(span.start) &&
         Number.isFinite(span.end),
     );
-  } catch (err) {
-    console.error("align unavailable; using token timings", err instanceof Error ? err.message : "unknown");
+  } catch {
     return null;
   }
 }

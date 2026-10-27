@@ -52,7 +52,7 @@ export type ReaderViewProps = {
   saveNote: () => Promise<void>;
   practiceModel: PracticeContour | null;
   practiceUser: PracticeContour | null;
-  practiceNote: string;
+  practiceLines: string[];
   practiceBusy: "" | "hear" | "recite";
   practiceRecording: boolean;
   onPracticeHear: () => void;
@@ -71,7 +71,7 @@ export function ReaderView(p: ReaderViewProps) {
     setActive, selectWord, setDraft, setEditing, setSpeed, setGraphSyllable,
     stopPlayback, playSentence, playStory, toggleRecord, cyclePinyin,
     regroupWords, prepareNotes, saveNote,
-    practiceModel, practiceUser, practiceNote, practiceBusy, practiceRecording,
+    practiceModel, practiceUser, practiceLines, practiceBusy, practiceRecording,
     onPracticeHear, onPracticeRecite,
     bookTitle, previousChapter, nextChapter,
   } = p;
@@ -258,7 +258,7 @@ export function ReaderView(p: ReaderViewProps) {
             onTogglePreviousTake={togglePreviousTake}
             practiceModel={practiceModel}
             practiceUser={practiceUser}
-            practiceNote={practiceNote}
+            practiceLines={practiceLines}
             practiceBusy={practiceBusy}
             practiceRecording={practiceRecording}
             onPracticeHear={onPracticeHear}
