@@ -1,15 +1,18 @@
-import { NextResponse } from "next/server";
+import { unauthorized } from "@/lib/guard";
+import { errorJson } from "@/lib/http";
+import { clip, redact } from "@/lib/redact";
 import { xaiFetch } from "@/lib/xai";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const denied = unauthorized(request);
+  if (denied) return denied;
   try {
     const incoming = await request.formData();
     const file = incoming.get("file");
-    if (!(file instanceof Blob)) {
-      return NextResponse.json({ error: "file is required" }, { status: 400 });
-    }
+    if (!(file instanceof Blob)) return errorJson(400, "file is required");
     const audio = file;
     const hints = String(incoming.get("hints") ?? "")
       .split(/[\s,，]+/u)
@@ -29,11 +32,8 @@ export async function POST(request: Request) {
     if (response.status === 400) response = await transcribe(false);
 
     if (!response.ok) {
-      const detail = await response.text();
-      return NextResponse.json(
-        { error: `STT failed (${response.status})`, detail },
-        { status: response.status },
-      );
+      const detail = clip(redact(await response.text()));
+      return errorJson(response.status, `STT failed (${response.status})`, detail);
     }
 
     const payload = (await response.json()) as {
@@ -42,14 +42,20 @@ export async function POST(request: Request) {
       words?: { text: string; start: number; end: number }[];
     };
 
-    return NextResponse.json({
-      text: payload.text ?? "",
-      duration: payload.duration ?? 0,
-      words: payload.words ?? [],
-    });
+    return Response.json(
+      {
+        text: payload.text ?? "",
+        duration: payload.duration ?? 0,
+        words: payload.words ?? [],
+      },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "STT error";
     const status = message.includes("XAI_API_KEY") ? 503 : 500;
-    return NextResponse.json({ error: message }, { status });
+    const error = message.includes("XAI_API_KEY")
+      ? "XAI_API_KEY is not set. Add it to the server environment."
+      : redact(message);
+    return errorJson(status, error);
   }
 }

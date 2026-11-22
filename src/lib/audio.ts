@@ -44,11 +44,34 @@ export async function startRecorder(): Promise<Recorder> {
 let playbackCtx: AudioContext | null = null;
 let currentSource: AudioBufferSourceNode | null = null;
 
+export const SLICE_PAD_SEC = 0.03;
+
+export type SliceSource = ArrayBuffer | { samples: Float32Array; sampleRate: number };
+
 function playbackContext(): AudioContext {
   if (!playbackCtx || playbackCtx.state === "closed") {
     playbackCtx = new AudioContext();
   }
   return playbackCtx;
+}
+
+function stopCurrent() {
+  if (!currentSource) return;
+  try {
+    currentSource.stop();
+  } catch {
+    /* already stopped */
+  }
+  currentSource = null;
+}
+
+async function decodeSource(ctx: AudioContext, source: SliceSource): Promise<AudioBuffer> {
+  if (source instanceof ArrayBuffer) {
+    return ctx.decodeAudioData(source.slice(0));
+  }
+  const buffer = ctx.createBuffer(1, source.samples.length, source.sampleRate);
+  buffer.copyToChannel(new Float32Array(source.samples), 0);
+  return buffer;
 }
 
 export async function playBuffer(
@@ -61,14 +84,7 @@ export async function playBuffer(
   const ctx = playbackContext();
   if (ctx.state === "suspended") await ctx.resume();
 
-  if (currentSource) {
-    try {
-      currentSource.stop();
-    } catch {
-      /* already stopped */
-    }
-    currentSource = null;
-  }
+  stopCurrent();
 
   const decoded = await ctx.decodeAudioData(data.slice(0));
   const source = ctx.createBufferSource();
@@ -102,6 +118,67 @@ export async function playBuffer(
     opts?.signal?.addEventListener("abort", stop, { once: true });
     try {
       source.start();
+    } catch (err) {
+      stop();
+      reject(err);
+    }
+  });
+}
+
+/** Play [startSec, endSec] of audio already decoded for the graph, with a short pad. */
+export async function playSlice(
+  data: SliceSource,
+  startSec: number,
+  endSec: number,
+  opts?: {
+    padSec?: number;
+    onTime?: (t: number) => void;
+    signal?: AbortSignal;
+  },
+): Promise<void> {
+  if (!(endSec > startSec)) return;
+  const ctx = playbackContext();
+  if (ctx.state === "suspended") await ctx.resume();
+  stopCurrent();
+
+  const decoded = await decodeSource(ctx, data);
+  const pad = opts?.padSec ?? SLICE_PAD_SEC;
+  const offset = Math.max(0, startSec - pad);
+  const stopAt = Math.min(decoded.duration, endSec + pad);
+  const dur = stopAt - offset;
+  if (!(dur > 0)) return;
+
+  const source = ctx.createBufferSource();
+  source.buffer = decoded;
+  source.connect(ctx.destination);
+  currentSource = source;
+  let raf = 0;
+  const started = ctx.currentTime;
+  const tick = () => {
+    if (ctx.state === "closed") return;
+    const elapsed = ctx.currentTime - started;
+    opts?.onTime?.(Math.min(stopAt, offset + elapsed));
+    raf = requestAnimationFrame(tick);
+  };
+  raf = requestAnimationFrame(tick);
+  await new Promise<void>((resolve, reject) => {
+    let finished = false;
+    const stop = () => {
+      if (finished) return;
+      finished = true;
+      cancelAnimationFrame(raf);
+      try {
+        source.stop();
+      } catch {
+        /* already stopped */
+      }
+      if (currentSource === source) currentSource = null;
+      resolve();
+    };
+    source.onended = stop;
+    opts?.signal?.addEventListener("abort", stop, { once: true });
+    try {
+      source.start(ctx.currentTime, offset, dur);
     } catch (err) {
       stop();
       reject(err);

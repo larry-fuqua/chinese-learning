@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Noto_Serif_SC, Source_Sans_3, Source_Serif_4 } from "next/font/google";
+import { ForgetLegacyDatabase } from "@/components/ForgetLegacyDatabase";
 import "./globals.css";
 
 const serifSc = Noto_Serif_SC({
@@ -40,6 +41,7 @@ export default function RootLayout({
       className={`${serifSc.variable} ${sourceSerif.variable} ${sourceSans.variable}`}
     >
       <body className="min-h-screen font-[family-name:var(--font-ui)] antialiased">
+        <ForgetLegacyDatabase />
         {children}
       </body>
     </html>

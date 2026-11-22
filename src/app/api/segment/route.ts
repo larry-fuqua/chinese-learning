@@ -1,23 +1,32 @@
-import { NextResponse } from "next/server";
-import type { Sentence } from "@/lib/types";
+import { unauthorized } from "@/lib/guard";
+import { errorJson, MAX_STORY_BYTES, readJsonLimited } from "@/lib/http";
 import { WORD_SEGMENT_RULES } from "@/lib/segmentation";
+import { clip, redact } from "@/lib/redact";
 import {
   buildSentencesFromHanzi,
   glueOrphanPunct,
   newId,
   normalizeWord,
 } from "@/lib/text";
+import type { Sentence } from "@/lib/types";
 import { xaiFetch } from "@/lib/xai";
+import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const denied = unauthorized(request);
+  if (denied) return denied;
   try {
-    const body = (await request.json()) as { hanzi?: string };
+    const bodyResult = await readJsonLimited(request, MAX_STORY_BYTES);
+    if (!bodyResult.ok) return errorJson(bodyResult.status, bodyResult.error);
+    const body =
+      bodyResult.value && typeof bodyResult.value === "object"
+        ? (bodyResult.value as { hanzi?: string })
+        : {};
     const hanzi = body.hanzi?.trim() ?? "";
-    if (!hanzi) {
-      return NextResponse.json({ error: "hanzi is required" }, { status: 400 });
-    }
+    if (!hanzi) return errorJson(400, "hanzi is required");
 
     const response = await xaiFetch("/v1/chat/completions", {
       method: "POST",
@@ -33,11 +42,8 @@ export async function POST(request: Request) {
     });
 
     if (!response.ok) {
-      const detail = await response.text();
-      return NextResponse.json(
-        { error: `Segment failed (${response.status})`, detail },
-        { status: response.status },
-      );
+      const detail = clip(redact(await response.text()));
+      return errorJson(response.status, `Segment failed (${response.status})`, detail);
     }
 
     const payload = (await response.json()) as {
@@ -45,11 +51,17 @@ export async function POST(request: Request) {
     };
     const content = payload.choices?.[0]?.message?.content ?? "";
     const sentences = parseSentences(content, hanzi);
-    return NextResponse.json({ sentences });
+    return NextResponse.json(
+      { sentences },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Segment error";
     const status = message.includes("XAI_API_KEY") ? 503 : 500;
-    return NextResponse.json({ error: message }, { status });
+    const error = message.includes("XAI_API_KEY")
+      ? "XAI_API_KEY is not set. Add it to the server environment."
+      : redact(message);
+    return errorJson(status, error);
   }
 }
 

@@ -1,3 +1,6 @@
+"use client";
+
+import { LogoutButton } from "@/components/LogoutButton";
 import Link from "next/link";
 
 export function AppHeader({
@@ -20,7 +23,10 @@ export function AppHeader({
           <h1 className="hanzi text-xl leading-tight">{title ?? "课文"}</h1>
         </div>
       </div>
-      <div className="flex items-center gap-2">{right}</div>
+      <div className="flex items-center gap-2">
+        {right}
+        <LogoutButton />
+      </div>
     </header>
   );
 }

@@ -35,6 +35,38 @@ export type Story = {
   notes: Record<string, Note>;
   createdAt: string;
   updatedAt: string;
+  /** Set together with chapterNumber when this story is a chapter. */
+  bookId?: string;
+  chapterNumber?: number;
+  chapterTitle?: string;
+  /**
+   * Sentence ids grouped into paragraphs. Omitted for a single paragraph,
+   * including stories saved before paragraphs existed.
+   */
+  paragraphs?: string[][];
+};
+
+export type Book = {
+  id: string;
+  title: string;
+  level: StoryLevel;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ChapterSummary = {
+  id: string;
+  title: string;
+  chapterNumber: number;
+  chapterTitle?: string;
+  level: StoryLevel;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type BookWithChapters = Book & {
+  chapters: ChapterSummary[];
 };
 
 export type TtsCache = {
@@ -48,13 +80,27 @@ export type TtsCache = {
 export type PitchPoint = {
   t: number;
   hz: number | null;
+  /** Frame RMS from extractPitch. Older points may omit it. */
+  e?: number;
 };
 
 export type SyllablePitch = {
   hanzi: string;
   pinyin: string;
+  /** Tone the graph compares and draws. Spoken tone after sandhi and neutral tone. */
   expectedTone: number;
+  dictionaryTone: number;
+  spokenTone: number;
+  /** Why spoken tone differs from the dictionary tone. Empty when they match. */
+  toneNote: string;
+  /** Learned checker label for the recording. Null when the contour is too short. */
   heardTone: number | null;
+  /** P(expected tone) for the recording. Null for a neutral tone or no contour. */
+  pExpected: number | null;
+  /** Learned checker label for the model voice. */
+  modelHeardTone: number | null;
+  /** P(expected tone) for the model voice. Null for a neutral tone or no contour. */
+  modelPExpected: number | null;
   start: number;
   end: number;
   userStart: number | null;
@@ -95,4 +141,5 @@ export type PrepareResponse = {
   hanzi: string;
   sentences: Sentence[];
   notes: Record<string, Note>;
+  paragraphs?: string[][];
 };

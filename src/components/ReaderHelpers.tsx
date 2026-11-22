@@ -9,12 +9,13 @@ import type {
   TtsCache,
   Word,
 } from "@/lib/types";
-import { isHan } from "@/lib/text";
-import { decodeToMono } from "@/lib/wav";
-import {
-  extractPitch,
-  referenceSyllables,
-} from "@/lib/pitch";
+import type { CharSpan } from "@/lib/align-audio";
+import { applyOwnership, normalizeTimestampUnit, sliceWindows, windowsFromAlignment } from "@/lib/align-audio";
+import { fetchAlignment } from "@/lib/align-client";
+import { displayPinyin } from "@/lib/pinyin";
+import { canDefineWord, isHan } from "@/lib/text";
+import { bufferToBase64, decodeToMono } from "@/lib/wav";
+import { buildSyllablePitches, extractPitch } from "@/lib/pitch";
 export function SentenceLine({
   sentence,
   active,
@@ -46,21 +47,31 @@ export function SentenceLine({
         const start = hanOffset;
         const hanCount = chars.filter(isHan).length;
         hanOffset += hanCount;
+        const definable = canDefineWord(word.hanzi);
         const hint = word.note || notes[word.hanzi]?.usage || notes[word.hanzi]?.gloss;
+        const ruby = displayPinyin(word.hanzi, word.pinyin);
         return (
           <span
             key={`${sentence.id}-${wi}`}
-            role="button"
-            tabIndex={-1}
-            className={`ruby-word word-btn ${
-              selectedWord === word.hanzi && active ? "active" : ""
-            } ${hint ? "has-note" : ""}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onWord(word);
-            }}
+            role={definable ? "button" : undefined}
+            tabIndex={definable ? -1 : undefined}
+            className={
+              definable
+                ? `ruby-word word-btn ${
+                    selectedWord === word.hanzi && active ? "active" : ""
+                  } ${hint ? "has-note" : ""}`
+                : "ruby-word"
+            }
+            onClick={
+              definable
+                ? (e) => {
+                    e.stopPropagation();
+                    onWord(word);
+                  }
+                : undefined
+            }
           >
-            {showRuby && word.pinyin ? <rt>{word.pinyin}</rt> : <rt>&nbsp;</rt>}
+            {showRuby && ruby ? <rt>{ruby}</rt> : <rt>&nbsp;</rt>}
             <span>
               {chars.map((ch, ci) => {
                 const hanBefore =
@@ -131,6 +142,56 @@ export function countBefore(chars: string[], index: number, ch: string): number 
 export function ttsKey(storyId: string, sentenceId: string, speed: number) {
   return `${storyId}:${sentenceId}:${speed.toFixed(2)}`;
 }
+const alignedWindows = new Map<string, CharSpan[]>();
+export async function decodeReference(
+  sentence: Sentence,
+  tts: TtsCache,
+  storyId: string,
+  speed: number,
+  cache: Map<string, PitchPoint[]>,
+): Promise<{ refPitch: PitchPoint[]; duration: number; windows: CharSpan[] }> {
+  const key = ttsKey(storyId, sentence.id, speed);
+  const decoded = await decodeToMono(tts.audio);
+  let refPitch = cache.get(key);
+  if (!refPitch) {
+    refPitch = extractPitch(decoded.samples, decoded.sampleRate);
+    cache.set(key, refPitch);
+  }
+  const duration = tts.duration || decoded.samples.length / decoded.sampleRate;
+  const normalized = normalizeTimestampUnit(tts.charTimes, duration);
+  tts.charTimes = normalized.times;
+  let windows = alignedWindows.get(key);
+  if (!windows) {
+    const spans = await fetchAlignment({
+      hanzi: sentence.hanzi,
+      words: sentence.words,
+      audioBase64: bufferToBase64(tts.audio),
+    });
+    if (spans?.length) {
+      windows = windowsFromAlignment(
+        sentence.hanzi,
+        spans,
+        decoded.samples,
+        decoded.sampleRate,
+      );
+      alignedWindows.set(key, windows);
+    } else {
+      windows = applyOwnership(
+        sliceWindows(
+          sentence.hanzi,
+          tts.graphChars,
+          tts.charTimes,
+          decoded.samples,
+          decoded.sampleRate,
+        ),
+        decoded.samples,
+        decoded.sampleRate,
+      );
+    }
+  }
+  return { refPitch, duration, windows };
+}
+
 export async function loadReferenceGraph(
   sentence: Sentence,
   tts: TtsCache,
@@ -138,24 +199,18 @@ export async function loadReferenceGraph(
   speed: number,
   cache: Map<string, PitchPoint[]>,
 ): Promise<ToneGraph> {
-  const key = ttsKey(storyId, sentence.id, speed);
-  let refPitch = cache.get(key);
-  if (!refPitch) {
-    const decoded = await decodeToMono(tts.audio);
-    refPitch = extractPitch(decoded.samples, decoded.sampleRate);
-    cache.set(key, refPitch);
-  }
+  const { refPitch, duration, windows } = await decodeReference(sentence, tts, storyId, speed, cache);
   return {
-    syllables: referenceSyllables(
-      sentence.words,
-      sentence.hanzi,
-      tts.graphChars,
-      tts.charTimes,
+    syllables: buildSyllablePitches({
+      words: sentence.words,
+      refTimes: windows,
+      userTimes: [],
       refPitch,
-    ),
+      userPitch: [],
+    }),
     refPitch,
     userPitch: [],
-    duration: tts.duration || lastPitchTime(refPitch),
+    duration: duration || lastPitchTime(refPitch),
     heard: "",
   };
 }

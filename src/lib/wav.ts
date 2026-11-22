@@ -29,6 +29,65 @@ function writeString(view: DataView, offset: number, value: string) {
   }
 }
 
+export function bufferToBase64(data: ArrayBuffer): string {
+  const bytes = new Uint8Array(data);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, Math.min(bytes.length, i + chunk)));
+  }
+  return btoa(binary);
+}
+
+/** PCM wav to mono float samples. Used where AudioContext is not available. */
+export function decodeWavPcm16(data: ArrayBuffer): { samples: Float32Array; sampleRate: number } {
+  const view = new DataView(data);
+  if (view.byteLength < 44 || readTag(view, 0) !== "RIFF" || readTag(view, 8) !== "WAVE") {
+    throw new Error("not a wav file");
+  }
+  let offset = 12;
+  let rate = 16000;
+  let channels = 1;
+  let bits = 16;
+  let dataOffset = -1;
+  let dataBytes = 0;
+  while (offset + 8 <= view.byteLength) {
+    const tag = readTag(view, offset);
+    const size = view.getUint32(offset + 4, true);
+    const start = offset + 8;
+    if (tag === "fmt ") {
+      channels = view.getUint16(start + 2, true);
+      rate = view.getUint32(start + 4, true);
+      bits = view.getUint16(start + 14, true);
+    } else if (tag === "data") {
+      dataOffset = start;
+      dataBytes = size;
+      break;
+    }
+    offset = start + size + (size % 2);
+  }
+  if (dataOffset < 0 || bits !== 16 || !(rate > 0) || !(channels > 0)) {
+    throw new Error("wav must be 16-bit PCM");
+  }
+  const frames = Math.floor(dataBytes / (2 * channels));
+  const samples = new Float32Array(frames);
+  for (let i = 0; i < frames; i++) {
+    let sum = 0;
+    for (let ch = 0; ch < channels; ch++) {
+      const sample = view.getInt16(dataOffset + (i * channels + ch) * 2, true);
+      sum += sample < 0 ? sample / 0x8000 : sample / 0x7fff;
+    }
+    samples[i] = sum / channels;
+  }
+  return { samples, sampleRate: rate };
+}
+
+function readTag(view: DataView, offset: number): string {
+  let tag = "";
+  for (let i = 0; i < 4; i++) tag += String.fromCharCode(view.getUint8(offset + i));
+  return tag;
+}
+
 export async function decodeToMono(
   data: ArrayBuffer,
 ): Promise<{ samples: Float32Array; sampleRate: number }> {

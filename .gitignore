@@ -36,7 +36,12 @@ yarn-error.log*
 # local runtime
 dev-server.log
 tunnel.log
+/data
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# python
+__pycache__/
+*.pyc

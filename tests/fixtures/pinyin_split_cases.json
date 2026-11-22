@@ -1,0 +1,336 @@
+[
+ {
+  "hanzi": "一年",
+  "pinyin": "yìnián",
+  "expected": [
+   "yì",
+   "nián"
+  ],
+  "deployed": [
+   "yìn",
+   "ián"
+  ]
+ },
+ {
+  "hanzi": "一年级",
+  "pinyin": "yìniánjí",
+  "expected": [
+   "yì",
+   "nián",
+   "jí"
+  ],
+  "deployed": [
+   "yìn",
+   "ián",
+   "jí"
+  ]
+ },
+ {
+  "hanzi": "果果",
+  "pinyin": "Guǒguǒ",
+  "expected": [
+   "Guǒ",
+   "guǒ"
+  ],
+  "deployed": [
+   "Guǒg",
+   "uǒ"
+  ]
+ },
+ {
+  "hanzi": "果果",
+  "pinyin": "Guǒguo",
+  "expected": [
+   "Guǒ",
+   "guo"
+  ],
+  "deployed": [
+   "Guǒg",
+   "uo"
+  ]
+ },
+ {
+  "hanzi": "西安",
+  "pinyin": "xī'ān",
+  "expected": [
+   "xī",
+   "ān"
+  ],
+  "deployed": [
+   "xī",
+   "ān"
+  ]
+ },
+ {
+  "hanzi": "西安",
+  "pinyin": "xīān",
+  "expected": [
+   "xī",
+   "ān"
+  ],
+  "deployed": [
+   "xīān",
+   ""
+  ]
+ },
+ {
+  "hanzi": "方案",
+  "pinyin": "fāngàn",
+  "expected": [
+   "fāng",
+   "àn"
+  ],
+  "deployed": [
+   "fāng",
+   "àn"
+  ]
+ },
+ {
+  "hanzi": "今年",
+  "pinyin": "jīnnián",
+  "expected": [
+   "jīn",
+   "nián"
+  ],
+  "deployed": [
+   "jīn",
+   "nián"
+  ]
+ },
+ {
+  "hanzi": "生日",
+  "pinyin": "shēngrì",
+  "expected": [
+   "shēng",
+   "rì"
+  ],
+  "deployed": [
+   "shēngr",
+   "ì"
+  ]
+ },
+ {
+  "hanzi": "一点儿",
+  "pinyin": "yìdiǎnr",
+  "expected": [
+   "yì",
+   "diǎn",
+   "r"
+  ],
+  "deployed": [
+   "yì",
+   "diǎnr",
+   ""
+  ]
+ },
+ {
+  "hanzi": "玩儿",
+  "pinyin": "wánr",
+  "expected": [
+   "wán",
+   "r"
+  ],
+  "deployed": [
+   "wánr",
+   ""
+  ]
+ },
+ {
+  "hanzi": "美国人",
+  "pinyin": "Měiguórén",
+  "expected": [
+   "Měi",
+   "guó",
+   "rén"
+  ],
+  "deployed": [
+   "Měig",
+   "uór",
+   "én"
+  ]
+ },
+ {
+  "hanzi": "美国",
+  "pinyin": "Měiguó",
+  "expected": [
+   "Měi",
+   "guó"
+  ],
+  "deployed": [
+   "Měig",
+   "uó"
+  ]
+ },
+ {
+  "hanzi": "家人",
+  "pinyin": "jiārén",
+  "expected": [
+   "jiā",
+   "rén"
+  ],
+  "deployed": [
+   "jiār",
+   "én"
+  ]
+ },
+ {
+  "hanzi": "中国人",
+  "pinyin": "Zhōngguórén",
+  "expected": [
+   "Zhōng",
+   "guó",
+   "rén"
+  ],
+  "deployed": [
+   "Zhōng",
+   "guór",
+   "én"
+  ]
+ },
+ {
+  "hanzi": "没关系",
+  "pinyin": "méiguānxi",
+  "expected": [
+   "méi",
+   "guān",
+   "xi"
+  ],
+  "deployed": [
+   "méig",
+   "uān",
+   "xi"
+  ]
+ },
+ {
+  "hanzi": "北京人",
+  "pinyin": "Běijīngrén",
+  "expected": [
+   "Běi",
+   "jīng",
+   "rén"
+  ],
+  "deployed": [
+   "Běi",
+   "jīngr",
+   "én"
+  ]
+ },
+ {
+  "hanzi": "天安门",
+  "pinyin": "Tiān'ānmén",
+  "expected": [
+   "Tiān",
+   "ān",
+   "mén"
+  ],
+  "deployed": [
+   "Tiān",
+   "ānmén",
+   ""
+  ]
+ },
+ {
+  "hanzi": "女儿",
+  "pinyin": "nǚ'ér",
+  "expected": [
+   "nǚ",
+   "ér"
+  ],
+  "deployed": [
+   "nǚ",
+   "ér"
+  ]
+ },
+ {
+  "hanzi": "学习",
+  "pinyin": "xué xí",
+  "expected": [
+   "xué",
+   "xí"
+  ],
+  "deployed": [
+   "xué",
+   "xí"
+  ]
+ },
+ {
+  "hanzi": "名字",
+  "pinyin": "míngzi",
+  "expected": [
+   "míng",
+   "zi"
+  ],
+  "deployed": [
+   "míng",
+   "zi"
+  ]
+ },
+ {
+  "hanzi": "十三",
+  "pinyin": "shísān",
+  "expected": [
+   "shí",
+   "sān"
+  ],
+  "deployed": [
+   "shí",
+   "sān"
+  ]
+ },
+ {
+  "hanzi": "棉袄",
+  "pinyin": "mián'ǎo",
+  "expected": [
+   "mián",
+   "ǎo"
+  ],
+  "deployed": [
+   "mián",
+   "ǎo"
+  ]
+ },
+ {
+  "hanzi": "恩爱",
+  "pinyin": "ēn'ài",
+  "expected": [
+   "ēn",
+   "ài"
+  ],
+  "deployed": [
+   "ēn",
+   "ài"
+  ]
+ },
+ {
+  "hanzi": "这儿",
+  "pinyin": "zhèr",
+  "expected": [
+   "zhè",
+   "r"
+  ],
+  "deployed": [
+   "zhèr",
+   ""
+  ]
+ },
+ {
+  "hanzi": "嗯",
+  "pinyin": "ńg",
+  "expected": [
+   "ńg"
+  ],
+  "deployed": [
+   "ńg"
+  ]
+ },
+ {
+  "hanzi": "我",
+  "pinyin": "wǒ",
+  "expected": [
+   "wǒ"
+  ],
+  "deployed": [
+   "wǒ"
+  ]
+ }
+]
